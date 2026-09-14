@@ -380,13 +380,13 @@ function topbar(title, sub){
 }
 
 /* ============ Espace chef d'equipe ============ */
-async function goTeamForm(n){
+async function goTeamForm(n, forceForm){
   const team = TEAM_BY_N[n];
   render(`${topbar("Espace chef d'equipe", chefLogin(n))}<main><div class="panel"><p class="loading-msg">Chargement...</p></div></main>`);
   const data = await loadStatus(n);
   cache[n] = data;
 
-  if(data.statutDenombrement === "termine"){
+  if(data.statutDenombrement === "termine" && !forceForm){
     renderTeamAlreadyDone(n, data);
     return;
   }
@@ -399,24 +399,25 @@ async function goTeamForm(n){
         <div class="meta">Equipe ${n} &middot; ${team.milieu === "RURAL" ? "Rural" : "Urbain"} &middot; ZD ${team.zd}</div>
       </div>
       <div class="panel">
-        <h3 style="font-size:1.05rem; margin-bottom:4px;">Signaler la fin du denombrement</h3>
+        <h3 style="font-size:1.05rem; margin-bottom:4px;">${forceForm ? "Modifier ma declaration" : "Signaler la fin du denombrement"}</h3>
         <p class="hint" style="margin-top:2px;">A remplir une fois que votre equipe a termine de denombrer sa zone.</p>
 
         <label for="zoneLibre">Quartier / village couvert (precision)</label>
         <input id="zoneLibre" type="text" placeholder="ex. Quartier Nord, village X" value="${data.zoneLibre||''}">
 
         <label for="nbMenages">Nombre de menages denombres</label>
-        <input id="nbMenages" type="number" min="0" placeholder="ex. 210">
+        <input id="nbMenages" type="number" min="0" placeholder="ex. 210" value="${data.nbMenages ?? ''}">
 
         <label for="dateFin">Date de fin du denombrement</label>
-        <input id="dateFin" type="date" value="${todayISO()}">
+        <input id="dateFin" type="date" value="${data.dateFin || todayISO()}">
 
         <label for="remarques">Remarques (facultatif)</label>
-        <textarea id="remarques" placeholder="Difficultes rencontrees, zones incompletes, etc."></textarea>
+        <textarea id="remarques" placeholder="Difficultes rencontrees, zones incompletes, etc.">${data.remarques || ''}</textarea>
 
         <div id="formError" class="error" style="display:none;"></div>
-        <div style="margin-top:18px;">
+        <div style="margin-top:18px; display:flex; gap:10px;">
           <button class="btn auto" onclick="submitTeamForm(${n})">Envoyer a la coordination</button>
+          ${forceForm ? `<button class="btn ghost" onclick="goTeamForm(${n})">Annuler</button>` : ``}
         </div>
       </div>
     </main>
@@ -455,7 +456,8 @@ async function submitTeamForm(n){
 
 function renderTeamAlreadyDone(n, data){
   const team = TEAM_BY_N[n];
-  const msg = data.statutEnquete === "assigne"
+  const isAssigned = data.statutEnquete === "assigne";
+  const msg = isAssigned
     ? `<div class="info-msg">Le questionnaire d'enquete a ete affecte a votre equipe le ${fmtDate(data.dateAssignation)}. Vous pouvez demarrer l'enquete.</div>`
     : `<div class="success-msg">Denombrement transmis a la coordination le ${fmtDate(data.dateFin)} (${data.nbMenages} menages). En attente d'affectation du questionnaire d'enquete.</div>`;
 
@@ -469,6 +471,7 @@ function renderTeamAlreadyDone(n, data){
       <div class="panel">
         <h3 style="font-size:1.05rem;">Denombrement de l'equipe ${n}</h3>
         ${msg}
+        ${isAssigned ? `` : `<div style="margin-top:14px;"><button class="btn ghost" onclick="goTeamForm(${n}, true)">Modifier ma declaration</button></div>`}
       </div>
     </main>
   `);
@@ -513,9 +516,20 @@ function renderCoordination(){
     const pillMilieu = t.milieu==="RURAL"
       ? `<span class="pill milieu-rural">Rural</span>`
       : `<span class="pill milieu-urbain">Urbain</span>`;
-    const action = (t.statutDenombrement==="termine" && t.statutEnquete!=="assigne")
-      ? `<button class="btn amber" onclick="assignSurvey(${t.n})">Affecter</button>`
-      : (t.statutEnquete==="assigne" ? `<span class="hint">${fmtDate(t.dateAssignation)}</span>` : `<span class="hint">-</span>`);
+    let action;
+    if(t.statutEnquete === "assigne"){
+      action = `<div style="display:flex;flex-direction:column;gap:6px;align-items:flex-start;">
+        <span class="hint">${fmtDate(t.dateAssignation)}</span>
+        <button class="btn ghost" style="padding:5px 10px; font-size:0.74rem;" onclick="unassignSurvey(${t.n})">Annuler l'affectation</button>
+      </div>`;
+    } else if(t.statutDenombrement === "termine"){
+      action = `<div style="display:flex;flex-direction:column;gap:6px;align-items:flex-start;">
+        <button class="btn amber" onclick="assignSurvey(${t.n})">Affecter</button>
+        <button class="btn ghost" style="padding:5px 10px; font-size:0.74rem;" onclick="resetTeam(${t.n})">Reinitialiser</button>
+      </div>`;
+    } else {
+      action = `<span class="hint">-</span>`;
+    }
     return `
       <tr>
         <td>${t.n}</td>
@@ -597,11 +611,28 @@ async function assignSurvey(n){
   renderCoordination();
 }
 
+async function unassignSurvey(n){
+  if(!confirm("Annuler l'affectation du questionnaire d'enquete pour l'equipe " + n + " ?")) return;
+  const data = cache[n] || defaultStatus();
+  data.statutEnquete = "non_assigne";
+  data.dateAssignation = null;
+  await saveStatus(n, data);
+  renderCoordination();
+}
+
+async function resetTeam(n){
+  if(!confirm("Reinitialiser completement les donnees de l'equipe " + n + " (denombrement et affectation) ? Cette action est irreversible.")) return;
+  await saveStatus(n, defaultStatus());
+  renderCoordination();
+}
+
 /* ============ Exposer au HTML (onclick) car module = portee non globale ============ */
 window.attemptLogin = attemptLogin;
 window.logout = logout;
 window.submitTeamForm = submitTeamForm;
 window.assignSurvey = assignSurvey;
+window.unassignSurvey = unassignSurvey;
+window.resetTeam = resetTeam;
 window.setStatutFilter = setStatutFilter;
 window.setMilieuFilter = setMilieuFilter;
 window.setZdFilter = setZdFilter;

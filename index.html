@@ -241,14 +241,16 @@ TEAMS.forEach(t=> TEAM_BY_N[t.n] = t);
 
 /* ============ Comptes ============ */
 function chefLogin(n){ return "EnseaEA2026_sup_" + (n*10+1); }
+function chefPassword(n){ return "EA2026_sup_" + (n*10+1); }
 const LOGIN_DB = {};
 TEAMS.forEach(t=>{
   const login = chefLogin(t.n);
-  LOGIN_DB[login] = { password: login, role: "chef", team: t.n };
+  LOGIN_DB[login] = { password: chefPassword(t.n), role: "chef", team: t.n };
 });
-LOGIN_DB["ENSEA2026_coord"] = { password: "Coord#Ensea26", role: "coordination" };
+LOGIN_DB["IT_EA2026"] = { password: "EA2026", role: "coordination" };
 
 let session = null;
+const SESSION_KEY = "ea2026_session";
 
 /* ============ Utilitaires Firestore ============ */
 const TOTAL_EQUIPES = 40;
@@ -337,11 +339,34 @@ function attemptLogin(){
     return;
   }
   session = { role: entry.role, team: entry.team || null };
+  try{
+    localStorage.setItem(SESSION_KEY, JSON.stringify({ login: login, role: entry.role, team: entry.team || null }));
+  }catch(e){ console.error("localStorage", e); }
   if(session.role === "chef") goTeamForm(session.team);
   else goCoordination();
 }
 
-function logout(){ renderLogin(); }
+function logout(){
+  try{ localStorage.removeItem(SESSION_KEY); }catch(e){}
+  renderLogin();
+}
+
+function initSession(){
+  try{
+    const raw = localStorage.getItem(SESSION_KEY);
+    if(raw){
+      const saved = JSON.parse(raw);
+      const entry = LOGIN_DB[saved.login];
+      if(entry && entry.role === saved.role){
+        session = { role: entry.role, team: entry.team || null };
+        if(session.role === "chef"){ goTeamForm(session.team); return; }
+        goCoordination();
+        return;
+      }
+    }
+  }catch(e){ console.error("initSession", e); }
+  renderLogin();
+}
 
 function topbar(title, sub){
   return `
@@ -584,7 +609,7 @@ window.setZdFilter = setZdFilter;
 window.goCoordination = goCoordination;
 
 /* ============ Init ============ */
-renderLogin();
+initSession();
 </script>
 </body>
 </html>

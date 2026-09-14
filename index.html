@@ -1,0 +1,546 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Suivi des equipes - Enquete Academique ENSEA 2026</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Source+Serif+4:opsz,wght@8..60,500;8..60,600;8..60,700&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@500;600&display=swap');
+
+  :root{
+    --ink:#132B4C;
+    --paper:#F5F8FC;
+    --panel:#FFFFFF;
+    --blue:#1E56A0;
+    --blue-dark:#123B72;
+    --blue-pale:#E8F0FB;
+    --amber:#D98E2B;
+    --amber-dark:#B4741C;
+    --success:#2E7D51;
+    --success-bg:#E5F4EA;
+    --warn:#B4472A;
+    --warn-bg:#F7E9E4;
+    --line:#DCE4EF;
+    --muted:#5B6C82;
+  }
+  *{box-sizing:border-box;}
+  body{
+    margin:0;
+    background:var(--paper);
+    color:var(--ink);
+    font-family:'IBM Plex Sans', sans-serif;
+    -webkit-font-smoothing:antialiased;
+  }
+  h1,h2,h3{
+    font-family:'Source Serif 4', serif;
+    font-weight:600;
+    margin:0;
+  }
+  .code{ font-family:'IBM Plex Mono', monospace; }
+
+  .topbar{
+    background:var(--blue-dark);
+    color:#EAF1FB;
+    padding:18px 24px;
+    display:flex;
+    align-items:baseline;
+    justify-content:space-between;
+    gap:16px;
+    flex-wrap:wrap;
+  }
+  .topbar h1{ font-size:1.15rem; color:#fff; }
+  .topbar .sub{ font-size:0.82rem; color:#AEC4E3; }
+  .switch-role{
+    background:none;
+    border:1px solid #33538B;
+    color:#DCE7F7;
+    font-size:0.78rem;
+    padding:6px 12px;
+    border-radius:3px;
+    cursor:pointer;
+    font-family:'IBM Plex Sans',sans-serif;
+  }
+  .switch-role:hover{ background:#1B4278; }
+
+  main{ max-width:1040px; margin:0 auto; padding:32px 20px 80px; }
+
+  .login-wrap{ max-width:420px; margin:70px auto; padding:0 20px; }
+  .login-wrap h1{ font-size:1.6rem; line-height:1.25; margin-bottom:8px; }
+  .login-wrap p{ color:var(--muted); font-size:0.9rem; line-height:1.5; margin-bottom:28px; }
+
+  .panel{
+    background:var(--panel);
+    border:1px solid var(--line);
+    border-radius:3px;
+    padding:24px;
+    margin-bottom:20px;
+  }
+  label{ display:block; font-size:0.8rem; color:var(--muted); margin:14px 0 5px; }
+  label:first-child{ margin-top:0; }
+  select, input, textarea{
+    width:100%;
+    font-family:'IBM Plex Sans', sans-serif;
+    font-size:0.95rem;
+    padding:9px 10px;
+    border:1px solid var(--line);
+    border-radius:3px;
+    background:#fff;
+    color:var(--ink);
+  }
+  select:focus, input:focus, textarea:focus{ outline:2px solid var(--blue); outline-offset:1px; }
+  textarea{ resize:vertical; min-height:70px; }
+  .btn{
+    display:inline-block;
+    background:var(--blue);
+    color:#fff;
+    border:none;
+    padding:10px 18px;
+    border-radius:3px;
+    font-size:0.9rem;
+    font-weight:500;
+    cursor:pointer;
+    font-family:'IBM Plex Sans',sans-serif;
+    width:100%;
+  }
+  .btn:hover{ background:var(--blue-dark); }
+  .btn:disabled{ background:#A9B8CC; cursor:not-allowed; }
+  .btn.amber{ background:var(--amber); width:auto; }
+  .btn.amber:hover{ background:var(--amber-dark); }
+  .btn.ghost{
+    background:none; color:var(--blue); border:1px solid var(--blue); width:auto;
+  }
+  .btn.ghost:hover{ background:var(--blue-pale); }
+  .btn.auto{ width:auto; }
+
+  .hint{ font-size:0.78rem; color:var(--muted); margin-top:6px; }
+  .error{ color:var(--warn); font-size:0.82rem; margin-top:10px; }
+  .success-msg{
+    background:var(--success-bg); color:#1F5C3A; border:1px solid #BEDBC9;
+    padding:14px 16px; border-radius:3px; font-size:0.9rem; margin-top:16px;
+  }
+  .info-msg{
+    background:var(--blue-pale); color:#123B72; border:1px solid #C6D9F2;
+    padding:14px 16px; border-radius:3px; font-size:0.9rem; margin-top:16px;
+  }
+
+  .team-id-card{
+    background:var(--blue-pale); border:1px solid #C6D9F2; border-radius:3px;
+    padding:16px 18px; margin-bottom:20px; font-size:0.88rem;
+  }
+  .team-id-card .name{ font-family:'Source Serif 4',serif; font-size:1.15rem; font-weight:600; }
+  .team-id-card .meta{ color:var(--muted); margin-top:4px; }
+
+  .stat-row{ display:grid; grid-template-columns:repeat(4,1fr); gap:12px; margin-bottom:24px; }
+  @media (max-width:700px){ .stat-row{ grid-template-columns:1fr 1fr; } }
+  .stat{
+    background:var(--panel); border:1px solid var(--line); border-radius:3px;
+    padding:16px; text-align:left;
+  }
+  .stat .num{ font-family:'Source Serif 4',serif; font-size:1.9rem; font-weight:600; line-height:1; color:var(--blue-dark); }
+  .stat .lbl{ font-size:0.75rem; color:var(--muted); margin-top:6px; }
+
+  .filters-row{ display:flex; gap:12px; margin-bottom:16px; flex-wrap:wrap; align-items:flex-end; }
+  .filters-row .fgroup{ min-width:160px; }
+  .filters-row label{ margin:0 0 5px; }
+  .chips{ display:flex; gap:8px; margin-bottom:16px; flex-wrap:wrap; }
+  .chips button{
+    background:#fff; border:1px solid var(--line); padding:6px 12px;
+    border-radius:20px; font-size:0.78rem; cursor:pointer; color:var(--muted);
+    font-family:'IBM Plex Sans',sans-serif;
+  }
+  .chips button.active{ background:var(--blue-dark); color:#fff; border-color:var(--blue-dark); }
+
+  .table-wrap{ overflow-x:auto; }
+  table{ width:100%; border-collapse:collapse; background:var(--panel); min-width:820px; }
+  th{
+    text-align:left; font-size:0.72rem; color:var(--muted); font-weight:500;
+    padding:10px 12px; border-bottom:2px solid var(--line); white-space:nowrap;
+  }
+  td{ padding:10px 12px; border-bottom:1px solid var(--line); font-size:0.87rem; vertical-align:middle; }
+  tr:last-child td{ border-bottom:none; }
+  .pill{
+    display:inline-block; padding:3px 9px; border-radius:20px; font-size:0.72rem; font-weight:500;
+  }
+  .pill.en_cours{ background:#EEF1F6; color:var(--muted); }
+  .pill.termine{ background:var(--success-bg); color:#1F5C3A; }
+  .pill.assigne{ background:#E4E9F5; color:#2A3F7A; }
+  .pill.milieu-rural{ background:#EFEAE0; color:#7A5E28; }
+  .pill.milieu-urbain{ background:var(--blue-pale); color:var(--blue-dark); }
+  .row-actions .btn{ padding:6px 12px; font-size:0.78rem; }
+  .empty{ text-align:center; color:var(--muted); padding:40px 0; font-size:0.9rem; }
+</style>
+</head>
+<body>
+
+<div id="app"></div>
+
+<script>
+/* ============ Donnees statiques des 40 equipes ============ */
+const TEAMS = [
+  {n:1, nom:"BILIVOGUI Martin", milieu:"RURAL", zd:"6013"},
+  {n:2, nom:"DIALLO Mamadou Tafsir", milieu:"URBAIN", zd:"0008"},
+  {n:3, nom:"KOGO Basile", milieu:"RURAL", zd:"6013"},
+  {n:4, nom:"N'DRI N'guessan Marion", milieu:"RURAL", zd:"6013"},
+  {n:5, nom:"ZOH Zrampeu Arthur Dieudonne", milieu:"RURAL", zd:"6013"},
+  {n:6, nom:"KOUAKOU Marie Tryphene Aurelia", milieu:"URBAIN", zd:"0020"},
+  {n:7, nom:"DROH Ballet Romaric", milieu:"URBAIN", zd:"0034"},
+  {n:8, nom:"LIADE Liade Paul-Ferdinand", milieu:"URBAIN", zd:"0046"},
+  {n:9, nom:"KONAN Moihet William Samuel", milieu:"URBAIN", zd:"0061"},
+  {n:10, nom:"OUATTARA Lamine", milieu:"RURAL", zd:"6013"},
+  {n:11, nom:"YAO N'guessan Michel", milieu:"URBAIN", zd:"0076"},
+  {n:12, nom:"FOGAING Franck-Noel", milieu:"URBAIN", zd:"0090"},
+  {n:13, nom:"SAWADOGO Bienvenu Cherif", milieu:"RURAL", zd:"6014"},
+  {n:14, nom:"LINGANI Yannick Pascal", milieu:"RURAL", zd:"6014"},
+  {n:15, nom:"BIYEN Abdoul Fadoul", milieu:"URBAIN", zd:"0104"},
+  {n:16, nom:"KONATE Yonfouetje Abibata", milieu:"URBAIN", zd:"0117"},
+  {n:17, nom:"BARRY Mamadou Lamarana", milieu:"URBAIN", zd:"0131"},
+  {n:18, nom:"DIALLO Thierno Souleymane Halimatou", milieu:"URBAIN", zd:"0144"},
+  {n:19, nom:"KOUADIO Poyard Samuel-Elie", milieu:"URBAIN", zd:"0162"},
+  {n:20, nom:"CISSE Aly", milieu:"URBAIN", zd:"0175"},
+  {n:21, nom:"LIDEHI Mognessoh Christ Fidel", milieu:"RURAL", zd:"6014"},
+  {n:22, nom:"KOUAKOU Kouame Jean Marc", milieu:"URBAIN", zd:"0191"},
+  {n:23, nom:"BARRY Mamadou Rachine", milieu:"URBAIN", zd:"0203"},
+  {n:24, nom:"CAMARA Alphar Oumar", milieu:"RURAL", zd:"6014"},
+  {n:25, nom:"LENO Tamba Jean", milieu:"RURAL", zd:"6014"},
+  {n:26, nom:"SAWADOGO Souleymane", milieu:"RURAL", zd:"6012"},
+  {n:27, nom:"CISSE Saran", milieu:"RURAL", zd:"6022"},
+  {n:28, nom:"SOULEYMANNE ARZIKA Mohamed", milieu:"RURAL", zd:"6012"},
+  {n:29, nom:"CAMARA Abdoul Karim Madalo", milieu:"URBAIN", zd:"0215"},
+  {n:30, nom:"KOMENAN Cedric Wilfried", milieu:"RURAL", zd:"6022"},
+  {n:31, nom:"BANGOURA Daouda", milieu:"RURAL", zd:"6012"},
+  {n:32, nom:"KONE Nagou", milieu:"RURAL", zd:"6012"},
+  {n:33, nom:"DIMI NGANONGO Firsule Barthel", milieu:"RURAL", zd:"6012"},
+  {n:34, nom:"ASSOUMOU Tanoh Raoul Martial", milieu:"URBAIN", zd:"0230"},
+  {n:35, nom:"BOKA Assande Patrick Junior", milieu:"URBAIN", zd:"0248"},
+  {n:36, nom:"FOFANA Kadidja", milieu:"RURAL", zd:"6022"},
+  {n:37, nom:"OUATTARA Abdoul Karim", milieu:"RURAL", zd:"6012"},
+  {n:38, nom:"MALGOUBRI Abdoul-Aziz", milieu:"URBAIN", zd:"0270"},
+  {n:39, nom:"BALDE Boubacar Siddy", milieu:"URBAIN", zd:"0289"},
+  {n:40, nom:"BARRY Mohamed Lamine", milieu:"URBAIN", zd:"0162"}
+];
+const TEAM_BY_N = {};
+TEAMS.forEach(t=> TEAM_BY_N[t.n] = t);
+
+/* ============ Comptes ============ */
+function chefLogin(n){ return "EnseaEA2026_sup_" + (n*10+1); }
+const LOGIN_DB = {};
+TEAMS.forEach(t=>{
+  const login = chefLogin(t.n);
+  LOGIN_DB[login] = { password: login, role: "chef", team: t.n };
+});
+LOGIN_DB["ENSEA2026_coord"] = { password: "Coord#Ensea26", role: "coordination" };
+
+let session = null; // { role:'chef'|'coordination', team:n|null }
+
+/* ============ Utilitaires stockage ============ */
+const TOTAL_EQUIPES = 40;
+let cache = {};
+
+function storageKey(n){ return "equipe:" + String(n).padStart(2,"0"); }
+
+function defaultStatus(){
+  return {
+    statutDenombrement: "en_cours",
+    nbMenages: null,
+    zoneLibre: "",
+    dateFin: null,
+    remarques: "",
+    statutEnquete: "non_assigne",
+    dateAssignation: null
+  };
+}
+
+async function loadStatus(n){
+  try{
+    const res = await window.storage.get(storageKey(n), true);
+    if(res && res.value) return JSON.parse(res.value);
+  }catch(e){}
+  return defaultStatus();
+}
+
+async function saveStatus(n, data){
+  await window.storage.set(storageKey(n), JSON.stringify(data), true);
+  cache[n] = data;
+}
+
+async function loadAllStatuses(){
+  const nums = TEAMS.map(t=>t.n);
+  const results = await Promise.all(nums.map(loadStatus));
+  results.forEach((d,i)=> cache[nums[i]] = d);
+  return cache;
+}
+
+function render(html){ document.getElementById("app").innerHTML = html; }
+function todayISO(){ return new Date().toISOString().slice(0,10); }
+function fmtDate(iso){
+  if(!iso) return "-";
+  const d = new Date(iso+"T00:00:00");
+  return d.toLocaleDateString("fr-FR", {day:"2-digit", month:"short"});
+}
+
+/* ============ Login ============ */
+function renderLogin(){
+  session = null;
+  render(`
+    <div class="login-wrap">
+      <h1>Suivi des equipes de denombrement</h1>
+      <p>Enquete Academique ENSEA 2026. Connectez-vous avec votre identifiant pour signaler l'avancement de votre equipe, ou pour acceder au tableau de coordination.</p>
+      <div class="panel">
+        <label for="loginInput">Identifiant</label>
+        <input id="loginInput" type="text" class="code" autocomplete="username" placeholder="EnseaEA2026_sup_11">
+        <label for="pwInput">Mot de passe</label>
+        <input id="pwInput" type="password" class="code" autocomplete="current-password">
+        <div id="loginError" class="error" style="display:none;"></div>
+        <div style="margin-top:18px;">
+          <button class="btn" onclick="attemptLogin()">Se connecter</button>
+        </div>
+      </div>
+    </div>
+  `);
+  document.getElementById("pwInput").addEventListener("keydown", e=>{
+    if(e.key === "Enter") attemptLogin();
+  });
+}
+
+function attemptLogin(){
+  const login = document.getElementById("loginInput").value.trim();
+  const pw = document.getElementById("pwInput").value.trim();
+  const err = document.getElementById("loginError");
+  const entry = LOGIN_DB[login];
+  if(!entry || entry.password !== pw){
+    err.textContent = "Identifiant ou mot de passe incorrect.";
+    err.style.display = "block";
+    return;
+  }
+  session = { role: entry.role, team: entry.team || null };
+  if(session.role === "chef") goTeamForm(session.team);
+  else goCoordination();
+}
+
+function logout(){ renderLogin(); }
+
+function topbar(title, sub){
+  return `
+    <div class="topbar">
+      <div>
+        <h1>${title}</h1>
+        <div class="sub">${sub}</div>
+      </div>
+      <button class="switch-role" onclick="logout()">Deconnexion</button>
+    </div>
+  `;
+}
+
+/* ============ Espace chef d'equipe ============ */
+async function goTeamForm(n){
+  const team = TEAM_BY_N[n];
+  render(`${topbar("Espace chef d'equipe", chefLogin(n))}<main><div class="panel">Chargement...</div></main>`);
+  const data = await loadStatus(n);
+  cache[n] = data;
+
+  if(data.statutDenombrement === "termine"){
+    renderTeamAlreadyDone(n, data);
+    return;
+  }
+
+  render(`
+    ${topbar("Espace chef d'equipe", "Equipe " + n)}
+    <main>
+      <div class="team-id-card">
+        <div class="name">${team.nom}</div>
+        <div class="meta">Equipe ${n} &middot; ${team.milieu === "RURAL" ? "Rural" : "Urbain"} &middot; ZD ${team.zd}</div>
+      </div>
+      <div class="panel">
+        <h3 style="font-size:1.05rem; margin-bottom:4px;">Signaler la fin du denombrement</h3>
+        <p class="hint" style="margin-top:2px;">A remplir une fois que votre equipe a termine de denombrer sa zone.</p>
+
+        <label for="zoneLibre">Quartier / village couvert (precision)</label>
+        <input id="zoneLibre" type="text" placeholder="ex. Quartier Nord, village X" value="${data.zoneLibre||''}">
+
+        <label for="nbMenages">Nombre de menages denombres</label>
+        <input id="nbMenages" type="number" min="0" placeholder="ex. 210">
+
+        <label for="dateFin">Date de fin du denombrement</label>
+        <input id="dateFin" type="date" value="${todayISO()}">
+
+        <label for="remarques">Remarques (facultatif)</label>
+        <textarea id="remarques" placeholder="Difficultes rencontrees, zones incompletes, etc."></textarea>
+
+        <div id="formError" class="error" style="display:none;"></div>
+        <div style="margin-top:18px;">
+          <button class="btn auto" onclick="submitTeamForm(${n})">Envoyer a la coordination</button>
+        </div>
+      </div>
+    </main>
+  `);
+}
+
+async function submitTeamForm(n){
+  const nbMenages = document.getElementById("nbMenages").value;
+  const dateFin = document.getElementById("dateFin").value;
+  const err = document.getElementById("formError");
+  if(!nbMenages || !dateFin){
+    err.textContent = "Merci de renseigner le nombre de menages et la date.";
+    err.style.display = "block";
+    return;
+  }
+  const data = cache[n] || defaultStatus();
+  data.zoneLibre = document.getElementById("zoneLibre").value.trim();
+  data.nbMenages = parseInt(nbMenages,10);
+  data.dateFin = dateFin;
+  data.remarques = document.getElementById("remarques").value.trim();
+  data.statutDenombrement = "termine";
+
+  await saveStatus(n, data);
+  renderTeamAlreadyDone(n, data);
+}
+
+function renderTeamAlreadyDone(n, data){
+  const team = TEAM_BY_N[n];
+  const msg = data.statutEnquete === "assigne"
+    ? `<div class="info-msg">Le questionnaire d'enquete a ete affecte a votre equipe le ${fmtDate(data.dateAssignation)}. Vous pouvez demarrer l'enquete.</div>`
+    : `<div class="success-msg">Denombrement transmis a la coordination le ${fmtDate(data.dateFin)} (${data.nbMenages} menages). En attente d'affectation du questionnaire d'enquete.</div>`;
+
+  render(`
+    ${topbar("Espace chef d'equipe", "Equipe " + n)}
+    <main>
+      <div class="team-id-card">
+        <div class="name">${team.nom}</div>
+        <div class="meta">Equipe ${n} &middot; ${team.milieu === "RURAL" ? "Rural" : "Urbain"} &middot; ZD ${team.zd}</div>
+      </div>
+      <div class="panel">
+        <h3 style="font-size:1.05rem;">Denombrement de l'equipe ${n}</h3>
+        ${msg}
+      </div>
+    </main>
+  `);
+}
+
+/* ============ Coordination ============ */
+let filters = { statut: "tous", milieu: "tous", zd: "tous" };
+
+async function goCoordination(){
+  render(`${topbar("Coordination", "Suivi des 40 equipes")}<main><div class="panel">Chargement des donnees...</div></main>`);
+  await loadAllStatuses();
+  renderCoordination();
+}
+
+function uniqueZDs(){
+  const set = new Set(TEAMS.map(t=>t.zd));
+  return Array.from(set).sort();
+}
+
+function renderCoordination(){
+  const all = TEAMS.map(t => Object.assign({}, t, cache[t.n] || defaultStatus()));
+  const nbTermine = all.filter(t=>t.statutDenombrement==="termine").length;
+  const nbAssigne = all.filter(t=>t.statutEnquete==="assigne").length;
+  const nbAttente = nbTermine - nbAssigne;
+  const nbEnCours = TOTAL_EQUIPES - nbTermine;
+
+  let filtered = all;
+  if(filters.statut==="en_cours") filtered = filtered.filter(t=>t.statutDenombrement==="en_cours");
+  if(filters.statut==="attente") filtered = filtered.filter(t=>t.statutDenombrement==="termine" && t.statutEnquete!=="assigne");
+  if(filters.statut==="assigne") filtered = filtered.filter(t=>t.statutEnquete==="assigne");
+  if(filters.milieu!=="tous") filtered = filtered.filter(t=>t.milieu===filters.milieu);
+  if(filters.zd!=="tous") filtered = filtered.filter(t=>t.zd===filters.zd);
+
+  const zdOptions = uniqueZDs().map(z=>`<option value="${z}" ${filters.zd===z?"selected":""}>${z}</option>`).join("");
+
+  const rows = filtered.map(t=>{
+    const pillDenom = t.statutDenombrement==="termine"
+      ? `<span class="pill termine">Termine</span>`
+      : `<span class="pill en_cours">En cours</span>`;
+    const pillEnquete = t.statutEnquete==="assigne"
+      ? `<span class="pill assigne">Affecte</span>` : "-";
+    const pillMilieu = t.milieu==="RURAL"
+      ? `<span class="pill milieu-rural">Rural</span>`
+      : `<span class="pill milieu-urbain">Urbain</span>`;
+    const action = (t.statutDenombrement==="termine" && t.statutEnquete!=="assigne")
+      ? `<button class="btn amber" onclick="assignSurvey(${t.n})">Affecter</button>`
+      : (t.statutEnquete==="assigne" ? `<span class="hint">${fmtDate(t.dateAssignation)}</span>` : `<span class="hint">-</span>`);
+    return `
+      <tr>
+        <td>${t.n}</td>
+        <td>${t.nom}</td>
+        <td>${pillMilieu}</td>
+        <td class="code">${t.zd}</td>
+        <td>${t.zoneLibre || "-"}</td>
+        <td>${pillDenom}</td>
+        <td>${t.nbMenages ?? "-"}</td>
+        <td>${fmtDate(t.dateFin)}</td>
+        <td>${pillEnquete}</td>
+        <td class="row-actions">${action}</td>
+      </tr>
+    `;
+  }).join("");
+
+  render(`
+    ${topbar("Coordination", "Suivi des 40 equipes - denombrement puis enquete")}
+    <main>
+      <div class="stat-row">
+        <div class="stat"><div class="num">${nbEnCours}</div><div class="lbl">En cours de denombrement</div></div>
+        <div class="stat"><div class="num">${nbTermine}/${TOTAL_EQUIPES}</div><div class="lbl">Denombrement termine</div></div>
+        <div class="stat"><div class="num">${nbAttente}</div><div class="lbl">En attente d'affectation</div></div>
+        <div class="stat"><div class="num">${nbAssigne}</div><div class="lbl">Enquete affectee</div></div>
+      </div>
+
+      <div class="chips">
+        <button class="${filters.statut==='tous'?'active':''}" onclick="setStatutFilter('tous')">Toutes</button>
+        <button class="${filters.statut==='en_cours'?'active':''}" onclick="setStatutFilter('en_cours')">En cours</button>
+        <button class="${filters.statut==='attente'?'active':''}" onclick="setStatutFilter('attente')">En attente d'affectation</button>
+        <button class="${filters.statut==='assigne'?'active':''}" onclick="setStatutFilter('assigne')">Enquete affectee</button>
+      </div>
+
+      <div class="filters-row">
+        <div class="fgroup">
+          <label for="milieuFilter">Milieu</label>
+          <select id="milieuFilter" onchange="setMilieuFilter(this.value)">
+            <option value="tous" ${filters.milieu==='tous'?'selected':''}>Tous</option>
+            <option value="RURAL" ${filters.milieu==='RURAL'?'selected':''}>Rural</option>
+            <option value="URBAIN" ${filters.milieu==='URBAIN'?'selected':''}>Urbain</option>
+          </select>
+        </div>
+        <div class="fgroup">
+          <label for="zdFilter">Zone de denombrement (ZD)</label>
+          <select id="zdFilter" onchange="setZdFilter(this.value)">
+            <option value="tous" ${filters.zd==='tous'?'selected':''}>Toutes</option>
+            ${zdOptions}
+          </select>
+        </div>
+        <div class="fgroup">
+          <button class="btn ghost" onclick="goCoordination()">Actualiser</button>
+        </div>
+      </div>
+
+      <div class="panel" style="padding:0;">
+        <div class="table-wrap">
+        ${filtered.length ? `
+        <table>
+          <thead><tr>
+            <th>Eq.</th><th>Chef d'equipe</th><th>Milieu</th><th>ZD</th><th>Precision zone</th><th>Denombrement</th><th>Menages</th><th>Date fin</th><th>Enquete</th><th></th>
+          </tr></thead>
+          <tbody>${rows}</tbody>
+        </table>` : `<div class="empty">Aucune equipe dans ce filtre.</div>`}
+        </div>
+      </div>
+    </main>
+  `);
+}
+
+function setStatutFilter(f){ filters.statut=f; renderCoordination(); }
+function setMilieuFilter(f){ filters.milieu=f; renderCoordination(); }
+function setZdFilter(f){ filters.zd=f; renderCoordination(); }
+
+async function assignSurvey(n){
+  const data = cache[n] || defaultStatus();
+  data.statutEnquete = "assigne";
+  data.dateAssignation = todayISO();
+  await saveStatus(n, data);
+  renderCoordination();
+}
+
+/* ============ Init ============ */
+renderLogin();
+</script>
+</body>
+</html>

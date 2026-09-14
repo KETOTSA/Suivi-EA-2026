@@ -168,13 +168,31 @@
   .pill.milieu-urbain{ background:var(--blue-pale); color:var(--blue-dark); }
   .row-actions .btn{ padding:6px 12px; font-size:0.78rem; }
   .empty{ text-align:center; color:var(--muted); padding:40px 0; font-size:0.9rem; }
+  .loading-msg{ text-align:center; color:var(--muted); padding:16px 0; font-size:0.88rem; }
 </style>
 </head>
 <body>
 
-<div id="app"></div>
+<div id="app"><div class="login-wrap"><p class="loading-msg">Chargement...</p></div></div>
 
-<script>
+<script type="module">
+import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
+import {
+  getFirestore, doc, getDoc, setDoc, collection, getDocs
+} from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
+
+const firebaseConfig = {
+  apiKey: "AIzaSyAxxmbNCn8WYo1EmqYVhUIHKRJzRStHnVI",
+  authDomain: "suivi-ea-2026.firebaseapp.com",
+  projectId: "suivi-ea-2026",
+  storageBucket: "suivi-ea-2026.firebasestorage.app",
+  messagingSenderId: "1068726551180",
+  appId: "1:1068726551180:web:ee65d0bf96ed892c67f1a9"
+};
+
+const fbApp = initializeApp(firebaseConfig);
+const db = getFirestore(fbApp);
+
 /* ============ Donnees statiques des 40 equipes ============ */
 const TEAMS = [
   {n:1, nom:"BILIVOGUI Martin", milieu:"RURAL", zd:"6013"},
@@ -230,13 +248,13 @@ TEAMS.forEach(t=>{
 });
 LOGIN_DB["ENSEA2026_coord"] = { password: "Coord#Ensea26", role: "coordination" };
 
-let session = null; // { role:'chef'|'coordination', team:n|null }
+let session = null;
 
-/* ============ Utilitaires stockage ============ */
+/* ============ Utilitaires Firestore ============ */
 const TOTAL_EQUIPES = 40;
 let cache = {};
 
-function storageKey(n){ return "equipe:" + String(n).padStart(2,"0"); }
+function padKey(n){ return String(n).padStart(2,"0"); }
 
 function defaultStatus(){
   return {
@@ -252,21 +270,27 @@ function defaultStatus(){
 
 async function loadStatus(n){
   try{
-    const res = await window.storage.get(storageKey(n), true);
-    if(res && res.value) return JSON.parse(res.value);
-  }catch(e){}
+    const snap = await getDoc(doc(db, "equipes", padKey(n)));
+    if(snap.exists()) return Object.assign(defaultStatus(), snap.data());
+  }catch(e){ console.error("loadStatus", e); }
   return defaultStatus();
 }
 
 async function saveStatus(n, data){
-  await window.storage.set(storageKey(n), JSON.stringify(data), true);
+  await setDoc(doc(db, "equipes", padKey(n)), data);
   cache[n] = data;
 }
 
 async function loadAllStatuses(){
-  const nums = TEAMS.map(t=>t.n);
-  const results = await Promise.all(nums.map(loadStatus));
-  results.forEach((d,i)=> cache[nums[i]] = d);
+  const found = {};
+  try{
+    const snap = await getDocs(collection(db, "equipes"));
+    snap.forEach(d => { found[d.id] = d.data(); });
+  }catch(e){ console.error("loadAllStatuses", e); }
+  TEAMS.forEach(t=>{
+    const raw = found[padKey(t.n)];
+    cache[t.n] = raw ? Object.assign(defaultStatus(), raw) : defaultStatus();
+  });
   return cache;
 }
 
@@ -334,7 +358,7 @@ function topbar(title, sub){
 /* ============ Espace chef d'equipe ============ */
 async function goTeamForm(n){
   const team = TEAM_BY_N[n];
-  render(`${topbar("Espace chef d'equipe", chefLogin(n))}<main><div class="panel">Chargement...</div></main>`);
+  render(`${topbar("Espace chef d'equipe", chefLogin(n))}<main><div class="panel"><p class="loading-msg">Chargement...</p></div></main>`);
   const data = await loadStatus(n);
   cache[n] = data;
 
@@ -384,6 +408,9 @@ async function submitTeamForm(n){
     err.style.display = "block";
     return;
   }
+  const submitBtn = document.querySelector(".btn.auto");
+  if(submitBtn){ submitBtn.disabled = true; submitBtn.textContent = "Envoi..."; }
+
   const data = cache[n] || defaultStatus();
   data.zoneLibre = document.getElementById("zoneLibre").value.trim();
   data.nbMenages = parseInt(nbMenages,10);
@@ -391,8 +418,15 @@ async function submitTeamForm(n){
   data.remarques = document.getElementById("remarques").value.trim();
   data.statutDenombrement = "termine";
 
-  await saveStatus(n, data);
-  renderTeamAlreadyDone(n, data);
+  try{
+    await saveStatus(n, data);
+    renderTeamAlreadyDone(n, data);
+  }catch(e){
+    console.error(e);
+    err.textContent = "Erreur d'envoi. Verifiez la connexion internet et reessayez.";
+    err.style.display = "block";
+    if(submitBtn){ submitBtn.disabled = false; submitBtn.textContent = "Envoyer a la coordination"; }
+  }
 }
 
 function renderTeamAlreadyDone(n, data){
@@ -420,7 +454,7 @@ function renderTeamAlreadyDone(n, data){
 let filters = { statut: "tous", milieu: "tous", zd: "tous" };
 
 async function goCoordination(){
-  render(`${topbar("Coordination", "Suivi des 40 equipes")}<main><div class="panel">Chargement des donnees...</div></main>`);
+  render(`${topbar("Coordination", "Suivi des 40 equipes")}<main><div class="panel"><p class="loading-msg">Chargement des donnees...</p></div></main>`);
   await loadAllStatuses();
   renderCoordination();
 }
@@ -538,6 +572,16 @@ async function assignSurvey(n){
   await saveStatus(n, data);
   renderCoordination();
 }
+
+/* ============ Exposer au HTML (onclick) car module = portee non globale ============ */
+window.attemptLogin = attemptLogin;
+window.logout = logout;
+window.submitTeamForm = submitTeamForm;
+window.assignSurvey = assignSurvey;
+window.setStatutFilter = setStatutFilter;
+window.setMilieuFilter = setMilieuFilter;
+window.setZdFilter = setZdFilter;
+window.goCoordination = goCoordination;
 
 /* ============ Init ============ */
 renderLogin();

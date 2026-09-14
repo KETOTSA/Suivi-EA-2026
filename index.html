@@ -240,12 +240,11 @@ const TEAM_BY_N = {};
 TEAMS.forEach(t=> TEAM_BY_N[t.n] = t);
 
 /* ============ Comptes ============ */
-function chefLogin(n){ return "EnseaEA2026_sup_" + (n*10+1); }
-function chefPassword(n){ return "EA2026_sup_" + (n*10+1); }
+function chefLogin(n){ return "EA2026_sup_" + (n*10+1); }
 const LOGIN_DB = {};
 TEAMS.forEach(t=>{
   const login = chefLogin(t.n);
-  LOGIN_DB[login] = { password: chefPassword(t.n), role: "chef", team: t.n };
+  LOGIN_DB[login] = { password: login, role: "chef", team: t.n };
 });
 LOGIN_DB["IT_EA2026"] = { password: "EA2026", role: "coordination" };
 
@@ -313,7 +312,7 @@ function renderLogin(){
       <p>Enquete Academique ENSEA 2026. Connectez-vous avec votre identifiant pour signaler l'avancement de votre equipe, ou pour acceder au tableau de coordination.</p>
       <div class="panel">
         <label for="loginInput">Identifiant</label>
-        <input id="loginInput" type="text" class="code" autocomplete="username" placeholder="EnseaEA2026_sup_11">
+        <input id="loginInput" type="text" class="code" autocomplete="username" placeholder="EA2026_sup_11">
         <label for="pwInput">Mot de passe</label>
         <input id="pwInput" type="password" class="code" autocomplete="current-password">
         <div id="loginError" class="error" style="display:none;"></div>

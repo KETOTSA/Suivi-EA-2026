@@ -63,7 +63,7 @@
   }
   .switch-role:hover{ background:#1B4278; }
 
-  main{ max-width:1040px; margin:0 auto; padding:32px 20px 80px; }
+  main{ max-width:1100px; margin:0 auto; padding:32px 20px 80px; }
 
   .login-wrap{ max-width:420px; margin:70px auto; padding:0 20px; }
   .login-wrap h1{ font-size:1.6rem; line-height:1.25; margin-bottom:8px; }
@@ -111,7 +111,10 @@
     background:none; color:var(--blue); border:1px solid var(--blue); width:auto;
   }
   .btn.ghost:hover{ background:var(--blue-pale); }
+  .btn.danger{ background:none; color:var(--warn); border:1px solid var(--warn); width:auto; }
+  .btn.danger:hover{ background:var(--warn-bg); }
   .btn.auto{ width:auto; }
+  .btn.small{ padding:5px 10px; font-size:0.74rem; }
 
   .hint{ font-size:0.78rem; color:var(--muted); margin-top:6px; }
   .error{ color:var(--warn); font-size:0.82rem; margin-top:10px; }
@@ -127,6 +130,7 @@
   .team-id-card{
     background:var(--blue-pale); border:1px solid #C6D9F2; border-radius:3px;
     padding:16px 18px; margin-bottom:20px; font-size:0.88rem;
+    display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:10px;
   }
   .team-id-card .name{ font-family:'Source Serif 4',serif; font-size:1.15rem; font-weight:600; }
   .team-id-card .meta{ color:var(--muted); margin-top:4px; }
@@ -165,11 +169,18 @@
   .pill.en_cours{ background:#EEF1F6; color:var(--muted); }
   .pill.termine{ background:var(--success-bg); color:#1F5C3A; }
   .pill.assigne{ background:#E4E9F5; color:#2A3F7A; }
+  .pill.rejete{ background:var(--warn-bg); color:#8A3520; }
   .pill.milieu-rural{ background:#EFEAE0; color:#7A5E28; }
   .pill.milieu-urbain{ background:var(--blue-pale); color:var(--blue-dark); }
   .row-actions .btn{ padding:6px 12px; font-size:0.78rem; }
   .empty{ text-align:center; color:var(--muted); padding:40px 0; font-size:0.9rem; }
   .loading-msg{ text-align:center; color:var(--muted); padding:16px 0; font-size:0.88rem; }
+  .qsel{ padding:5px 6px; font-size:0.76rem; min-width:88px; }
+  .qsel.st-todo{ background:#fff; color:var(--muted); }
+  .qsel.st-done{ background:var(--success-bg); color:#1F5C3A; }
+  .qsel.st-rejected{ background:var(--warn-bg); color:#8A3520; }
+  .toolbar{ display:flex; gap:10px; margin-bottom:16px; flex-wrap:wrap; align-items:flex-end; }
+  .overlay{ position:fixed; inset:0; background:rgba(19,43,76,.45); display:flex; align-items:center; justify-content:center; z-index:50; padding:20px; }
 </style>
 </head>
 <body>
@@ -247,12 +258,12 @@ TEAMS.forEach(t=>{
   const login = chefLogin(t.n);
   LOGIN_DB[login] = { password: login, role: "chef", team: t.n };
 });
-LOGIN_DB["IT_EA2026"] = { password: "EA2026", role: "coordination" };
+LOGIN_DB["IT_EA2026"] = { password: "EA2026", role: "it" };
 
 let session = null;
 const SESSION_KEY = "ea2026_session";
 
-/* ============ Utilitaires Firestore ============ */
+/* ============ Utilitaires Firestore - denombrement ============ */
 const TOTAL_EQUIPES = 40;
 let cache = {};
 
@@ -296,17 +307,23 @@ async function loadAllStatuses(){
   return cache;
 }
 
-/* ============ Collecte (4 questionnaires par menage) ============ */
+/* ============ Collecte : 4 questionnaires par menage ============ */
 const QUESTIONNAIRES = [
   {key:"q_menage", label:"Menage"},
   {key:"q_senior", label:"Senior"},
-  {key:"q_enfants", label:"Travail enfants"},
+  {key:"q_enfants", label:"Travail des enfants"},
   {key:"q_education", label:"Education"}
+];
+const Q_STATUTS = [
+  {value:"todo", label:"A faire"},
+  {value:"done", label:"Fait"},
+  {value:"rejected", label:"Rejete"}
 ];
 let collecteCache = {};
 let collecteLoaded = false;
 
-function defaultCollecte(){ return { quota: null, menages: [] }; }
+function defaultCollecte(){ return { menages: [] }; }
+function defaultMenageQ(){ return { q_menage:"todo", q_senior:"todo", q_enfants:"todo", q_education:"todo" }; }
 
 async function loadCollecte(n){
   try{
@@ -335,10 +352,10 @@ async function loadAllCollecte(){
   return collecteCache;
 }
 
-function menageComplet(m){
-  return QUESTIONNAIRES.every(q => !!m[q.key]);
-}
-function menageId(m){ return [m.zd,m.concession,m.ilot,m.numero].filter(Boolean).join("-"); }
+function menageComplet(m){ return QUESTIONNAIRES.every(q => m[q.key] === "done"); }
+function menageRejete(m){ return QUESTIONNAIRES.some(q => m[q.key] === "rejected"); }
+function menageId(m){ return `EA2026/${m.zd||""}/${m.ilot||""}/${m.lot||""}/${m.numero||""}`; }
+function qStatusLabel(v){ return (Q_STATUTS.find(s=>s.value===v)||Q_STATUTS[0]).label; }
 
 function render(html){ document.getElementById("app").innerHTML = html; }
 function todayISO(){ return new Date().toISOString().slice(0,10); }
@@ -353,8 +370,8 @@ function renderLogin(){
   session = null;
   render(`
     <div class="login-wrap">
-      <h1>Suivi des equipes de denombrement</h1>
-      <p>Enquete Academique ENSEA 2026. Connectez-vous avec votre identifiant pour signaler l'avancement de votre equipe, ou pour acceder au tableau de coordination.</p>
+      <h1>Suivi des equipes - Enquete ENSEA 2026</h1>
+      <p>Connectez-vous avec votre identifiant pour signaler l'avancement de votre equipe, ou pour acceder a l'espace equipe IT.</p>
       <div class="panel">
         <label for="loginInput">Identifiant</label>
         <input id="loginInput" type="text" class="code" autocomplete="username" placeholder="EA2026_sup_11">
@@ -387,7 +404,7 @@ function attemptLogin(){
     localStorage.setItem(SESSION_KEY, JSON.stringify({ login: login, role: entry.role, team: entry.team || null }));
   }catch(e){ console.error("localStorage", e); }
   if(session.role === "chef") goTeamForm(session.team);
-  else goCoordination();
+  else goIT();
 }
 
 function logout(){
@@ -404,7 +421,7 @@ function initSession(){
       if(entry && entry.role === saved.role){
         session = { role: entry.role, team: entry.team || null };
         if(session.role === "chef"){ goTeamForm(session.team); return; }
-        goCoordination();
+        goIT();
         return;
       }
     }
@@ -440,8 +457,10 @@ async function goTeamForm(n, forceForm){
     ${topbar("Espace chef d'equipe", "Equipe " + n)}
     <main>
       <div class="team-id-card">
-        <div class="name">${team.nom}</div>
-        <div class="meta">Equipe ${n} &middot; ${team.milieu === "RURAL" ? "Rural" : "Urbain"} &middot; ZD ${team.zd}</div>
+        <div>
+          <div class="name">${team.nom}</div>
+          <div class="meta">Equipe ${n} &middot; ${team.milieu === "RURAL" ? "Rural" : "Urbain"} &middot; ZD ${team.zd}</div>
+        </div>
       </div>
       <div class="panel">
         <h3 style="font-size:1.05rem; margin-bottom:4px;">${forceForm ? "Modifier ma declaration" : "Signaler la fin du denombrement"}</h3>
@@ -508,8 +527,10 @@ async function renderTeamDone(n, data){
       ${topbar("Espace chef d'equipe", "Equipe " + n)}
       <main>
         <div class="team-id-card">
-          <div class="name">${team.nom}</div>
-          <div class="meta">Equipe ${n} &middot; ${team.milieu === "RURAL" ? "Rural" : "Urbain"} &middot; ZD ${team.zd}</div>
+          <div>
+            <div class="name">${team.nom}</div>
+            <div class="meta">Equipe ${n} &middot; ${team.milieu === "RURAL" ? "Rural" : "Urbain"} &middot; ZD ${team.zd}</div>
+          </div>
         </div>
         <div class="panel">
           <h3 style="font-size:1.05rem;">Denombrement de l'equipe ${n}</h3>
@@ -521,41 +542,40 @@ async function renderTeamDone(n, data){
     return;
   }
 
-  render(`
-    ${topbar("Espace chef d'equipe", "Equipe " + n)}
-    <main>
-      <div class="team-id-card">
-        <div class="name">${team.nom}</div>
-        <div class="meta">Equipe ${n} &middot; ${team.milieu === "RURAL" ? "Rural" : "Urbain"} &middot; ZD ${team.zd}</div>
-      </div>
-      <div class="panel">
-        <div class="info-msg">Le questionnaire d'enquete a ete affecte a votre equipe le ${fmtDate(data.dateAssignation)}.</div>
-      </div>
-      <div class="panel"><p class="loading-msg">Chargement de vos menages...</p></div>
-    </main>
-  `);
-
+  render(`${topbar("Espace chef d'equipe", "Equipe " + n)}<main><div class="panel"><p class="loading-msg">Chargement de vos menages...</p></div></main>`);
   const coll = await loadCollecte(n);
   collecteCache[n] = coll;
+  chefSearch = "";
   renderCollecteChefBody(n, team, data, coll);
 }
+
+let chefSearch = "";
+function setChefSearch(v){ chefSearch = v; renderCollecteChefBody(session.team, TEAM_BY_N[session.team], cache[session.team], collecteCache[session.team]); }
 
 function renderCollecteChefBody(n, team, data, coll){
   const total = coll.menages.length;
   const complets = coll.menages.filter(menageComplet).length;
-  const quota = coll.quota || team.milieu; // fallback display only
 
-  const rows = coll.menages.map((m, idx)=>{
+  const visibles = coll.menages
+    .map((m, idx)=>({m, idx}))
+    .filter(({m}) => !chefSearch || menageId(m).toLowerCase().includes(chefSearch.toLowerCase()));
+
+  const rows = visibles.map(({m, idx})=>{
     const cells = QUESTIONNAIRES.map(q=>`
-      <td style="text-align:center;">
-        <input type="checkbox" ${m[q.key] ? "checked" : ""} onchange="toggleQ(${n}, ${idx}, '${q.key}', this.checked)" style="width:18px;height:18px;">
+      <td>
+        <select class="qsel st-${m[q.key]}" onchange="toggleQ(${n}, ${idx}, '${q.key}', this.value); this.className='qsel st-'+this.value;">
+          ${Q_STATUTS.map(s=>`<option value="${s.value}" ${m[q.key]===s.value?"selected":""}>${s.label}</option>`).join("")}
+        </select>
       </td>
     `).join("");
+    const statutPill = menageComplet(m) ? `<span class="pill termine">Complet</span>`
+      : menageRejete(m) ? `<span class="pill rejete">A reprendre</span>`
+      : `<span class="pill en_cours">En cours</span>`;
     return `
       <tr>
         <td class="code">${menageId(m)}</td>
         ${cells}
-        <td>${menageComplet(m) ? `<span class="pill termine">Complet</span>` : `<span class="pill en_cours">En cours</span>`}</td>
+        <td>${statutPill}</td>
       </tr>
     `;
   }).join("");
@@ -564,68 +584,76 @@ function renderCollecteChefBody(n, team, data, coll){
     ${topbar("Espace chef d'equipe", "Equipe " + n)}
     <main>
       <div class="team-id-card">
-        <div class="name">${team.nom}</div>
-        <div class="meta">Equipe ${n} &middot; ${team.milieu === "RURAL" ? "Rural" : "Urbain"} &middot; ZD ${team.zd}</div>
+        <div>
+          <div class="name">${team.nom}</div>
+          <div class="meta">Equipe ${n} &middot; ${team.milieu === "RURAL" ? "Rural" : "Urbain"} &middot; ZD ${team.zd}</div>
+        </div>
       </div>
       <div class="panel">
-        <div class="info-msg">Enquete affectee le ${fmtDate(data.dateAssignation)}. Cochez chaque questionnaire au fur et a mesure de son administration pour chaque menage.</div>
+        <div class="info-msg">Enquete affectee le ${fmtDate(data.dateAssignation)}. Mettez a jour le statut de chaque questionnaire au fur et a mesure de l'administration aupres de chaque menage.</div>
       </div>
-      <div class="stat-row" style="grid-template-columns:1fr 1fr;">
-        <div class="stat"><div class="num">${complets}/${total || (coll.quota||0)}</div><div class="lbl">Menages entierement enquetes</div></div>
-        <div class="stat"><div class="num">${coll.quota ?? "-"}</div><div class="lbl">Quota de menages affecte</div></div>
+      <div class="stat-row" style="grid-template-columns:1fr;">
+        <div class="stat"><div class="num">${complets}/${total}</div><div class="lbl">Menages entierement enquetes</div></div>
       </div>
+      ${total ? `
+      <div class="toolbar">
+        <input type="text" placeholder="Rechercher un menage (ID)..." style="max-width:320px;" value="${chefSearch}" oninput="setChefSearch(this.value)">
+      </div>` : ``}
       <div class="panel" style="padding:0;">
         <div class="table-wrap">
         ${total ? `
         <table>
           <thead><tr>
-            <th>ID menage</th>${QUESTIONNAIRES.map(q=>`<th style="text-align:center;">${q.label}</th>`).join("")}<th>Statut</th>
+            <th>ID menage</th>${QUESTIONNAIRES.map(q=>`<th>${q.label}</th>`).join("")}<th>Statut</th>
           </tr></thead>
-          <tbody>${rows}</tbody>
-        </table>` : `<div class="empty">Aucun menage ne vous a encore ete affecte. Contactez la coordination.</div>`}
+          <tbody>${rows.length ? rows : `<tr><td colspan="6" class="empty">Aucun menage ne correspond a la recherche</td></tr>`}</tbody>
+        </table>` : `<div class="empty">Aucun menage ne vous a encore ete affecte. Contactez l'equipe IT.</div>`}
         </div>
       </div>
     </main>
   `);
 }
 
-async function toggleQ(n, idx, field, checked){
+async function toggleQ(n, idx, field, value){
   const data = collecteCache[n] || (await loadCollecte(n));
   if(!data.menages[idx]) return;
-  data.menages[idx][field] = checked;
+  data.menages[idx][field] = value;
   await saveCollecte(n, data);
-  renderCollecteChefBody(n, TEAM_BY_N[n], cache[n], data);
+  collecteCache[n] = data;
 }
 
-/* ============ Coordination ============ */
+/* ============ Equipe IT ============ */
 let filters = { statut: "tous", milieu: "tous", zd: "tous" };
-let coordTab = "denombrement";
-let menagesModal = null; // {headers, dataRows, equipeCol, zdCol, concessionCol, ilotCol, numCol} or {addTeam:n}
+let itTab = "denombrement";
+let menagesModal = null;
+let itTeamDetail = null; // team number when viewing a team's household detail
+let itSearch = "";
 
-function coordTabBar(){
+function itTabBar(){
   return `
     <div class="chips" style="margin-bottom:22px;">
-      <button class="${coordTab==='denombrement'?'active':''}" onclick="switchCoordTab('denombrement')">Suivi denombrement</button>
-      <button class="${coordTab==='collecte'?'active':''}" onclick="switchCoordTab('collecte')">Suivi collecte</button>
+      <button class="${itTab==='denombrement'?'active':''}" onclick="switchITTab('denombrement')">Suivi denombrement</button>
+      <button class="${itTab==='collecte'?'active':''}" onclick="switchITTab('collecte')">Suivi collecte</button>
     </div>
   `;
 }
 
-async function switchCoordTab(tab){
-  coordTab = tab;
+async function switchITTab(tab){
+  itTab = tab;
+  itTeamDetail = null;
   if(tab === "collecte"){
-    render(`${topbar("Coordination", "Suivi de la collecte")}<main>${coordTabBar()}<div class="panel"><p class="loading-msg">Chargement...</p></div></main>`);
+    render(`${topbar("Equipe IT", "Suivi de la collecte")}<main>${itTabBar()}<div class="panel"><p class="loading-msg">Chargement...</p></div></main>`);
     if(!collecteLoaded) await loadAllCollecte();
-    renderCollecteCoordination();
+    renderCollecteIT();
   } else {
-    renderCoordination();
+    renderDenombrementIT();
   }
 }
 
-async function goCoordination(){
-  render(`${topbar("Coordination", "Suivi des 40 equipes")}<main><div class="panel"><p class="loading-msg">Chargement des donnees...</p></div></main>`);
+async function goIT(){
+  render(`${topbar("Equipe IT", "Suivi des 40 equipes")}<main><div class="panel"><p class="loading-msg">Chargement des donnees...</p></div></main>`);
   await loadAllStatuses();
-  renderCoordination();
+  renderDenombrementIT();
 }
 
 function uniqueZDs(){
@@ -633,7 +661,7 @@ function uniqueZDs(){
   return Array.from(set).sort();
 }
 
-function renderCoordination(){
+function renderDenombrementIT(){
   const all = TEAMS.map(t => Object.assign({}, t, cache[t.n] || defaultStatus()));
   const nbTermine = all.filter(t=>t.statutDenombrement==="termine").length;
   const nbAssigne = all.filter(t=>t.statutEnquete==="assigne").length;
@@ -662,12 +690,12 @@ function renderCoordination(){
     if(t.statutEnquete === "assigne"){
       action = `<div style="display:flex;flex-direction:column;gap:6px;align-items:flex-start;">
         <span class="hint">${fmtDate(t.dateAssignation)}</span>
-        <button class="btn ghost" style="padding:5px 10px; font-size:0.74rem;" onclick="unassignSurvey(${t.n})">Annuler l'affectation</button>
+        <button class="btn ghost small" onclick="unassignSurvey(${t.n})">Annuler l'affectation</button>
       </div>`;
     } else if(t.statutDenombrement === "termine"){
       action = `<div style="display:flex;flex-direction:column;gap:6px;align-items:flex-start;">
         <button class="btn amber" onclick="assignSurvey(${t.n})">Affecter</button>
-        <button class="btn ghost" style="padding:5px 10px; font-size:0.74rem;" onclick="resetTeam(${t.n})">Reinitialiser</button>
+        <button class="btn ghost small" onclick="resetTeam(${t.n})">Reinitialiser</button>
       </div>`;
     } else {
       action = `<span class="hint">-</span>`;
@@ -689,9 +717,9 @@ function renderCoordination(){
   }).join("");
 
   render(`
-    ${topbar("Coordination", "Suivi des 40 equipes - denombrement puis enquete")}
+    ${topbar("Equipe IT", "Suivi des 40 equipes - denombrement puis enquete")}
     <main>
-      ${coordTabBar()}
+      ${itTabBar()}
       <div class="stat-row">
         <div class="stat"><div class="num">${nbEnCours}</div><div class="lbl">En cours de denombrement</div></div>
         <div class="stat"><div class="num">${nbTermine}/${TOTAL_EQUIPES}</div><div class="lbl">Denombrement termine</div></div>
@@ -723,7 +751,7 @@ function renderCoordination(){
           </select>
         </div>
         <div class="fgroup">
-          <button class="btn ghost" onclick="goCoordination()">Actualiser</button>
+          <button class="btn ghost" onclick="goIT()">Actualiser</button>
         </div>
       </div>
 
@@ -742,16 +770,16 @@ function renderCoordination(){
   `);
 }
 
-function setStatutFilter(f){ filters.statut=f; renderCoordination(); }
-function setMilieuFilter(f){ filters.milieu=f; renderCoordination(); }
-function setZdFilter(f){ filters.zd=f; renderCoordination(); }
+function setStatutFilter(f){ filters.statut=f; renderDenombrementIT(); }
+function setMilieuFilter(f){ filters.milieu=f; renderDenombrementIT(); }
+function setZdFilter(f){ filters.zd=f; renderDenombrementIT(); }
 
 async function assignSurvey(n){
   const data = cache[n] || defaultStatus();
   data.statutEnquete = "assigne";
   data.dateAssignation = todayISO();
   await saveStatus(n, data);
-  renderCoordination();
+  renderDenombrementIT();
 }
 
 async function unassignSurvey(n){
@@ -760,70 +788,79 @@ async function unassignSurvey(n){
   data.statutEnquete = "non_assigne";
   data.dateAssignation = null;
   await saveStatus(n, data);
-  renderCoordination();
+  renderDenombrementIT();
 }
 
 async function resetTeam(n){
   if(!confirm("Reinitialiser completement les donnees de l'equipe " + n + " (denombrement et affectation) ? Cette action est irreversible.")) return;
   await saveStatus(n, defaultStatus());
-  renderCoordination();
+  renderDenombrementIT();
 }
 
-/* ============ Coordination - onglet Collecte ============ */
-function renderCollecteCoordination(){
-  const rows = TEAMS.map(t=>{
+/* ============ Equipe IT - onglet Collecte ============ */
+function renderCollecteIT(){
+  if(itTeamDetail){ renderTeamDetailIT(itTeamDetail); return; }
+
+  let teamRows = TEAMS.map(t=>{
     const coll = collecteCache[t.n] || defaultCollecte();
     const total = coll.menages.length;
     const complets = coll.menages.filter(menageComplet).length;
+    const rejetes = coll.menages.filter(menageRejete).length;
     const pct = total ? Math.round(100*complets/total) : 0;
-    return { t, coll, total, complets, pct };
+    return { t, coll, total, complets, rejetes, pct };
   });
-  const totalMenages = rows.reduce((s,r)=>s+r.total,0);
-  const totalComplets = rows.reduce((s,r)=>s+r.complets,0);
-  const teamsComplets = rows.filter(r=>r.total>0 && r.complets===r.total).length;
+  if(itSearch){
+    const q = itSearch.toLowerCase();
+    teamRows = teamRows.filter(r => r.t.nom.toLowerCase().includes(q) || String(r.t.n).includes(q));
+  }
 
-  const trs = rows.map(({t,coll,total,complets,pct})=>`
+  const totalMenages = teamRows.reduce((s,r)=>s+r.total,0);
+  const totalComplets = teamRows.reduce((s,r)=>s+r.complets,0);
+  const totalRejetes = teamRows.reduce((s,r)=>s+r.rejetes,0);
+  const teamsComplets = teamRows.filter(r=>r.total>0 && r.complets===r.total).length;
+
+  const trs = teamRows.map(({t,coll,total,complets,rejetes,pct})=>`
     <tr>
       <td>${t.n}</td>
       <td>${t.nom}</td>
       <td class="code">${t.zd}</td>
-      <td>
-        <input type="number" min="0" value="${coll.quota ?? ''}" placeholder="-" style="width:70px;padding:5px 7px;"
-          onchange="updateQuota(${t.n}, this.value)">
-      </td>
       <td>${total}</td>
       <td>${complets}</td>
+      <td>${rejetes ? `<span class="pill rejete">${rejetes}</span>` : "0"}</td>
       <td>${total ? pct+"%" : "-"}</td>
       <td class="row-actions">
-        <button class="btn ghost" style="padding:5px 10px; font-size:0.74rem;" onclick="openAddMenageModal(${t.n})">+ Menage</button>
+        <div style="display:flex;flex-direction:column;gap:6px;align-items:flex-start;">
+          <button class="btn ghost small" onclick="openTeamDetailIT(${t.n})">Detail</button>
+          <button class="btn ghost small" onclick="openAddMenageModal(${t.n})">+ Menage</button>
+        </div>
       </td>
     </tr>
   `).join("");
 
   render(`
-    ${topbar("Coordination", "Suivi de la collecte")}
+    ${topbar("Equipe IT", "Suivi de la collecte")}
     <main>
-      ${coordTabBar()}
+      ${itTabBar()}
       <div class="stat-row">
         <div class="stat"><div class="num">${totalMenages}</div><div class="lbl">Menages affectes (total)</div></div>
         <div class="stat"><div class="num">${totalComplets}</div><div class="lbl">Menages entierement enquetes</div></div>
-        <div class="stat"><div class="num">${teamsComplets}/${TOTAL_EQUIPES}</div><div class="lbl">Equipes ayant termine leur liste</div></div>
+        <div class="stat"><div class="num">${totalRejetes}</div><div class="lbl">Questionnaires rejetes</div></div>
         <div class="stat"><div class="num">${totalMenages ? Math.round(100*totalComplets/totalMenages) : 0}%</div><div class="lbl">Avancement global</div></div>
       </div>
 
-      <div style="margin-bottom:16px;">
-        <button class="btn amber" onclick="openImportMenages()">Importer des menages (CSV / Excel)</button>
+      <div class="toolbar">
+        <input type="text" placeholder="Rechercher une equipe (nom ou numero)..." style="max-width:320px;" value="${itSearch}" oninput="setITSearch(this.value)">
+        <button class="btn amber auto" onclick="openImportMenages()">Importer des menages (CSV / Excel)</button>
       </div>
-
-      <p class="hint" style="margin-bottom:12px;">Colonnes attendues dans le fichier : Equipe (numero 1 a 40), ZD, Concession, Ilot, Numero de menage.</p>
+      <p class="hint" style="margin-bottom:16px;">Colonnes attendues : Equipe (numero 1 a 40), ZD, Ilot, Lot, Numero de menage. Identifiant genere : EA2026/ZD/ILOT/LOT/MEN.</p>
 
       <div class="panel" style="padding:0;">
         <div class="table-wrap">
         <table>
           <thead><tr>
-            <th>Eq.</th><th>Chef d'equipe</th><th>ZD</th><th>Quota</th><th>Menages affectes</th><th>Complets</th><th>%</th><th></th>
+            <th>Eq.</th><th>Chef d'equipe</th><th>ZD</th><th>Menages affectes</th><th>Complets</th><th>Rejetes</th><th>%</th><th></th>
           </tr></thead>
-          <tbody>${trs}</tbody>
+          <tbody>${trs.length ? trs : `<tr><td colspan="8" class="empty">Aucune equipe ne correspond a la recherche</td></tr>`}</tbody>
         </table>
         </div>
       </div>
@@ -832,41 +869,118 @@ function renderCollecteCoordination(){
   `);
 }
 
-async function updateQuota(n, val){
+function setITSearch(v){ itSearch = v; renderCollecteIT(); }
+
+function openTeamDetailIT(n){ itTeamDetail = n; itDetailSearch = ""; renderCollecteIT(); }
+function closeTeamDetailIT(){ itTeamDetail = null; renderCollecteIT(); }
+
+let itDetailSearch = "";
+function setITDetailSearch(v){ itDetailSearch = v; renderTeamDetailIT(itTeamDetail); }
+
+function renderTeamDetailIT(n){
+  const team = TEAM_BY_N[n];
   const coll = collecteCache[n] || defaultCollecte();
-  coll.quota = val === "" ? null : Math.max(0, parseInt(val)||0);
-  await saveCollecte(n, coll);
-  renderCollecteCoordination();
+  const total = coll.menages.length;
+  const complets = coll.menages.filter(menageComplet).length;
+
+  const visibles = coll.menages
+    .map((m, idx)=>({m, idx}))
+    .filter(({m}) => !itDetailSearch || menageId(m).toLowerCase().includes(itDetailSearch.toLowerCase()));
+
+  const rows = visibles.map(({m, idx})=>{
+    const cells = QUESTIONNAIRES.map(q=>`
+      <td>
+        <select class="qsel st-${m[q.key]}" onchange="toggleQ(${n}, ${idx}, '${q.key}', this.value); this.className='qsel st-'+this.value;">
+          ${Q_STATUTS.map(s=>`<option value="${s.value}" ${m[q.key]===s.value?"selected":""}>${s.label}</option>`).join("")}
+        </select>
+      </td>
+    `).join("");
+    const statutPill = menageComplet(m) ? `<span class="pill termine">Complet</span>`
+      : menageRejete(m) ? `<span class="pill rejete">A reprendre</span>`
+      : `<span class="pill en_cours">En cours</span>`;
+    return `
+      <tr>
+        <td class="code">${menageId(m)}</td>
+        ${cells}
+        <td>${statutPill}</td>
+        <td class="row-actions">
+          <div style="display:flex;gap:6px;">
+            <button class="btn ghost small" onclick="openEditMenageModal(${n}, ${idx})">Modifier</button>
+            <button class="btn danger small" onclick="deleteMenage(${n}, ${idx})">Suppr.</button>
+          </div>
+        </td>
+      </tr>
+    `;
+  }).join("");
+
+  render(`
+    ${topbar("Equipe IT", "Detail collecte - Equipe " + n)}
+    <main>
+      <button class="btn ghost" style="margin-bottom:16px;" onclick="closeTeamDetailIT()">&larr; Retour au suivi collecte</button>
+      <div class="team-id-card">
+        <div>
+          <div class="name">${team.nom}</div>
+          <div class="meta">Equipe ${n} &middot; ${team.milieu === "RURAL" ? "Rural" : "Urbain"} &middot; ZD ${team.zd}</div>
+        </div>
+        <button class="btn amber auto" onclick="openAddMenageModal(${n})">+ Ajouter un menage</button>
+      </div>
+      <div class="stat-row" style="grid-template-columns:1fr;">
+        <div class="stat"><div class="num">${complets}/${total}</div><div class="lbl">Menages entierement enquetes</div></div>
+      </div>
+      ${total ? `
+      <div class="toolbar">
+        <input type="text" placeholder="Rechercher un menage (ID)..." style="max-width:320px;" value="${itDetailSearch}" oninput="setITDetailSearch(this.value)">
+      </div>` : ``}
+      <div class="panel" style="padding:0;">
+        <div class="table-wrap">
+        ${total ? `
+        <table>
+          <thead><tr>
+            <th>ID menage</th>${QUESTIONNAIRES.map(q=>`<th>${q.label}</th>`).join("")}<th>Statut</th><th></th>
+          </tr></thead>
+          <tbody>${rows.length ? rows : `<tr><td colspan="7" class="empty">Aucun menage ne correspond a la recherche</td></tr>`}</tbody>
+        </table>` : `<div class="empty">Aucun menage affecte a cette equipe pour le moment.</div>`}
+        </div>
+      </div>
+    </main>
+    ${menagesModal ? renderMenagesModal() : ""}
+  `);
 }
 
-function openImportMenages(){
-  menagesModal = { step: "upload" };
-  renderCollecteCoordination();
+async function deleteMenage(n, idx){
+  if(!confirm("Supprimer ce menage de la liste de l'equipe " + n + " ? Cette action est irreversible.")) return;
+  const coll = collecteCache[n] || defaultCollecte();
+  coll.menages.splice(idx, 1);
+  await saveCollecte(n, coll);
+  renderTeamDetailIT(n);
 }
-function openAddMenageModal(n){
-  menagesModal = { step: "addMenage", team: n };
-  renderCollecteCoordination();
-}
-function closeMenagesModal(){ menagesModal = null; renderCollecteCoordination(); }
+
+/* ============ Modales : ajout / edition / import de menages ============ */
+function openImportMenages(){ menagesModal = { step: "upload" }; (itTeamDetail ? renderTeamDetailIT(itTeamDetail) : renderCollecteIT()); }
+function openAddMenageModal(n){ menagesModal = { step: "addMenage", team: n }; (itTeamDetail ? renderTeamDetailIT(itTeamDetail) : renderCollecteIT()); }
+function openEditMenageModal(n, idx){ menagesModal = { step: "editMenage", team: n, idx }; renderTeamDetailIT(n); }
+function closeMenagesModal(){ menagesModal = null; (itTeamDetail ? renderTeamDetailIT(itTeamDetail) : renderCollecteIT()); }
 function closeMenagesModalOnOverlay(e){ if(e.target.classList.contains("overlay")) closeMenagesModal(); }
 
 function renderMenagesModal(){
-  if(menagesModal.step === "addMenage"){
+  if(menagesModal.step === "addMenage" || menagesModal.step === "editMenage"){
     const t = TEAM_BY_N[menagesModal.team];
+    const isEdit = menagesModal.step === "editMenage";
+    const existing = isEdit ? (collecteCache[t.n].menages[menagesModal.idx] || {}) : {zd:t.zd, ilot:"", lot:"", numero:""};
     return `
-      <div class="overlay" style="position:fixed;inset:0;background:rgba(19,43,76,.45);display:flex;align-items:center;justify-content:center;z-index:50;" onclick="closeMenagesModalOnOverlay(event)">
+      <div class="overlay" onclick="closeMenagesModalOnOverlay(event)">
         <div class="panel" style="width:380px;max-width:90vw;">
-          <h3 style="font-size:1.05rem;margin-bottom:14px;">Ajouter un menage - Equipe ${t.n}</h3>
+          <h3 style="font-size:1.05rem;margin-bottom:14px;">${isEdit ? "Modifier le menage" : "Ajouter un menage"} - Equipe ${t.n}</h3>
           <label>ZD</label>
-          <input id="mm-zd" type="text" value="${t.zd}">
-          <label>Concession</label>
-          <input id="mm-concession" type="text" placeholder="ex. 01">
+          <input id="mm-zd" type="text" value="${existing.zd||''}">
           <label>Ilot</label>
-          <input id="mm-ilot" type="text" placeholder="ex. 02">
+          <input id="mm-ilot" type="text" placeholder="ex. 02" value="${existing.ilot||''}">
+          <label>Lot</label>
+          <input id="mm-lot" type="text" placeholder="ex. 01" value="${existing.lot||''}">
           <label>Numero de menage</label>
-          <input id="mm-numero" type="text" placeholder="ex. 015">
+          <input id="mm-numero" type="text" placeholder="ex. 015" value="${existing.numero||''}">
           <div style="margin-top:18px; display:flex; gap:10px;">
-            <button class="btn auto" onclick="submitAddMenage(${t.n})">Ajouter</button>
+            <button class="btn auto" onclick="${isEdit ? `submitEditMenage(${t.n}, ${menagesModal.idx})` : `submitAddMenage(${t.n})`}">${isEdit ? "Enregistrer" : "Ajouter"}</button>
             <button class="btn ghost" onclick="closeMenagesModal()">Annuler</button>
           </div>
         </div>
@@ -875,10 +989,10 @@ function renderMenagesModal(){
   }
   if(menagesModal.step === "upload"){
     return `
-      <div class="overlay" style="position:fixed;inset:0;background:rgba(19,43,76,.45);display:flex;align-items:center;justify-content:center;z-index:50;" onclick="closeMenagesModalOnOverlay(event)">
+      <div class="overlay" onclick="closeMenagesModalOnOverlay(event)">
         <div class="panel" style="width:420px;max-width:90vw;">
           <h3 style="font-size:1.05rem;margin-bottom:14px;">Importer des menages</h3>
-          <div class="hint" style="margin-bottom:10px;">Fichier CSV ou Excel avec les colonnes Equipe, ZD, Concession, Ilot, Numero de menage.</div>
+          <div class="hint" style="margin-bottom:10px;">Fichier CSV ou Excel avec les colonnes Equipe, ZD, Ilot, Lot, Numero de menage.</div>
           <input id="mm-file" type="file" accept=".csv,.xlsx,.xls" onchange="onMenagesFileChosen(this.files[0])">
           <div style="margin-top:18px;">
             <button class="btn ghost" onclick="closeMenagesModal()">Annuler</button>
@@ -892,17 +1006,17 @@ function renderMenagesModal(){
     const opt = (sel) => `<option value="-1" ${sel===-1?"selected":""}>- Aucune -</option>` +
       headers.map((h,i)=>`<option value="${i}" ${sel===i?"selected":""}>${h}</option>`).join("");
     return `
-      <div class="overlay" style="position:fixed;inset:0;background:rgba(19,43,76,.45);display:flex;align-items:center;justify-content:center;z-index:50;" onclick="closeMenagesModalOnOverlay(event)">
+      <div class="overlay" onclick="closeMenagesModalOnOverlay(event)">
         <div class="panel" style="width:420px;max-width:90vw;">
           <h3 style="font-size:1.05rem;margin-bottom:14px;">Faire correspondre les colonnes</h3>
           <label>Equipe (numero)</label>
           <select id="mm-col-equipe">${opt(menagesModal.equipeCol)}</select>
           <label>ZD</label>
           <select id="mm-col-zd">${opt(menagesModal.zdCol)}</select>
-          <label>Concession</label>
-          <select id="mm-col-concession">${opt(menagesModal.concessionCol)}</select>
           <label>Ilot</label>
           <select id="mm-col-ilot">${opt(menagesModal.ilotCol)}</select>
+          <label>Lot</label>
+          <select id="mm-col-lot">${opt(menagesModal.lotCol)}</select>
           <label>Numero de menage</label>
           <select id="mm-col-numero">${opt(menagesModal.numCol)}</select>
           <div class="hint" style="margin-top:10px;">${menagesModal.dataRows.length} ligne(s) detectee(s).</div>
@@ -938,11 +1052,11 @@ function onMenagesFileChosen(file){
         headers, dataRows,
         equipeCol: guessMenageCol(headers, ["equipe","équipe","team","chef","superviseur"]),
         zdCol: guessMenageCol(headers, ["zd","zone"]),
-        concessionCol: guessMenageCol(headers, ["concession"]),
         ilotCol: guessMenageCol(headers, ["ilot","ilôt"]),
+        lotCol: guessMenageCol(headers, ["lot","concession"]),
         numCol: guessMenageCol(headers, ["numero","numéro","menage","ménage","n°"])
       };
-      renderCollecteCoordination();
+      (itTeamDetail ? renderTeamDetailIT(itTeamDetail) : renderCollecteIT());
     }catch(err){ alert("Impossible de lire ce fichier."); }
   };
   reader.readAsBinaryString(file);
@@ -951,8 +1065,8 @@ function onMenagesFileChosen(file){
 async function submitImportMenages(){
   const equipeCol = parseInt(document.getElementById("mm-col-equipe").value);
   const zdCol = parseInt(document.getElementById("mm-col-zd").value);
-  const concessionCol = parseInt(document.getElementById("mm-col-concession").value);
   const ilotCol = parseInt(document.getElementById("mm-col-ilot").value);
+  const lotCol = parseInt(document.getElementById("mm-col-lot").value);
   const numCol = parseInt(document.getElementById("mm-col-numero").value);
   if(equipeCol < 0 || numCol < 0){ alert("La colonne Equipe et la colonne Numero de menage sont obligatoires."); return; }
 
@@ -962,12 +1076,12 @@ async function submitImportMenages(){
     const teamN = parseInt(String(row[equipeCol]||"").trim(), 10);
     if(!teamN || !TEAM_BY_N[teamN]) { skipped++; return; }
     const zd = zdCol>=0 ? String(row[zdCol]||"").trim() : TEAM_BY_N[teamN].zd;
-    const concession = concessionCol>=0 ? String(row[concessionCol]||"").trim() : "";
     const ilot = ilotCol>=0 ? String(row[ilotCol]||"").trim() : "";
+    const lot = lotCol>=0 ? String(row[lotCol]||"").trim() : "";
     const numero = String(row[numCol]||"").trim();
     if(!numero){ skipped++; return; }
     if(!byTeam[teamN]) byTeam[teamN] = [];
-    byTeam[teamN].push({zd, concession, ilot, numero, q_menage:false, q_senior:false, q_enfants:false, q_education:false});
+    byTeam[teamN].push(Object.assign({zd, ilot, lot, numero}, defaultMenageQ()));
   });
 
   const teamNums = Object.keys(byTeam).map(Number);
@@ -985,23 +1099,41 @@ async function submitImportMenages(){
   }
 
   menagesModal = null;
-  renderCollecteCoordination();
+  (itTeamDetail ? renderTeamDetailIT(itTeamDetail) : renderCollecteIT());
   alert(`${added} menage(s) importe(s)${skipped ? ", " + skipped + " ignore(s) (equipe invalide, doublon ou ligne incomplete)" : ""}.`);
 }
 
 async function submitAddMenage(n){
   const zd = document.getElementById("mm-zd").value.trim();
-  const concession = document.getElementById("mm-concession").value.trim();
   const ilot = document.getElementById("mm-ilot").value.trim();
+  const lot = document.getElementById("mm-lot").value.trim();
   const numero = document.getElementById("mm-numero").value.trim();
   if(!numero){ alert("Le numero de menage est requis."); return; }
   const coll = collecteCache[n] || defaultCollecte();
-  const m = {zd, concession, ilot, numero, q_menage:false, q_senior:false, q_enfants:false, q_education:false};
+  const m = Object.assign({zd, ilot, lot, numero}, defaultMenageQ());
   if(coll.menages.some(x=>menageId(x)===menageId(m))){ alert("Ce menage existe deja pour cette equipe."); return; }
   coll.menages.push(m);
   await saveCollecte(n, coll);
   menagesModal = null;
-  renderCollecteCoordination();
+  (itTeamDetail ? renderTeamDetailIT(itTeamDetail) : renderCollecteIT());
+}
+
+async function submitEditMenage(n, idx){
+  const zd = document.getElementById("mm-zd").value.trim();
+  const ilot = document.getElementById("mm-ilot").value.trim();
+  const lot = document.getElementById("mm-lot").value.trim();
+  const numero = document.getElementById("mm-numero").value.trim();
+  if(!numero){ alert("Le numero de menage est requis."); return; }
+  const coll = collecteCache[n] || defaultCollecte();
+  const current = coll.menages[idx];
+  if(!current) { menagesModal = null; renderTeamDetailIT(n); return; }
+  const updated = Object.assign({}, current, {zd, ilot, lot, numero});
+  const newId = menageId(updated);
+  if(coll.menages.some((x,i)=> i!==idx && menageId(x)===newId)){ alert("Un autre menage a deja cet identifiant."); return; }
+  coll.menages[idx] = updated;
+  await saveCollecte(n, coll);
+  menagesModal = null;
+  renderTeamDetailIT(n);
 }
 
 /* ============ Exposer au HTML (onclick) car module = portee non globale ============ */
@@ -1014,17 +1146,24 @@ window.resetTeam = resetTeam;
 window.setStatutFilter = setStatutFilter;
 window.setMilieuFilter = setMilieuFilter;
 window.setZdFilter = setZdFilter;
-window.goCoordination = goCoordination;
-window.switchCoordTab = switchCoordTab;
+window.goIT = goIT;
+window.switchITTab = switchITTab;
 window.toggleQ = toggleQ;
-window.updateQuota = updateQuota;
+window.setChefSearch = setChefSearch;
+window.setITSearch = setITSearch;
+window.setITDetailSearch = setITDetailSearch;
+window.openTeamDetailIT = openTeamDetailIT;
+window.closeTeamDetailIT = closeTeamDetailIT;
+window.deleteMenage = deleteMenage;
 window.openImportMenages = openImportMenages;
 window.openAddMenageModal = openAddMenageModal;
+window.openEditMenageModal = openEditMenageModal;
 window.closeMenagesModal = closeMenagesModal;
 window.closeMenagesModalOnOverlay = closeMenagesModalOnOverlay;
 window.onMenagesFileChosen = onMenagesFileChosen;
 window.submitImportMenages = submitImportMenages;
 window.submitAddMenage = submitAddMenage;
+window.submitEditMenage = submitEditMenage;
 
 /* ============ Init ============ */
 initSession();

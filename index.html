@@ -887,11 +887,22 @@ function renderCollecteIT(){
 
 function setITSearch(v){ itSearch = v; renderCollecteIT(); }
 
-function openTeamDetailIT(n){ itTeamDetail = n; itDetailSearch = ""; renderCollecteIT(); }
-function closeTeamDetailIT(){ itTeamDetail = null; renderCollecteIT(); }
+function openTeamDetailIT(n){ itTeamDetail = n; itDetailSearch = ""; selectedMenages = new Set(); renderCollecteIT(); }
+function closeTeamDetailIT(){ itTeamDetail = null; selectedMenages = new Set(); renderCollecteIT(); }
 
 let itDetailSearch = "";
+let selectedMenages = new Set();
 function setITDetailSearch(v){ itDetailSearch = v; renderTeamDetailIT(itTeamDetail); }
+
+function toggleSelectMenage(idx, checked){
+  if(checked) selectedMenages.add(idx); else selectedMenages.delete(idx);
+  renderTeamDetailIT(itTeamDetail);
+}
+function toggleSelectAllMenages(checked, visibleIdxs){
+  if(checked) visibleIdxs.forEach(i=>selectedMenages.add(i));
+  else visibleIdxs.forEach(i=>selectedMenages.delete(i));
+  renderTeamDetailIT(itTeamDetail);
+}
 
 function renderTeamDetailIT(n){
   const team = TEAM_BY_N[n];
@@ -902,6 +913,9 @@ function renderTeamDetailIT(n){
   const visibles = coll.menages
     .map((m, idx)=>({m, idx}))
     .filter(({m}) => !itDetailSearch || menageId(m).toLowerCase().includes(itDetailSearch.toLowerCase()));
+  const visibleIdxs = visibles.map(v=>v.idx);
+  const allVisibleSelected = visibleIdxs.length>0 && visibleIdxs.every(i=>selectedMenages.has(i));
+  const nbSelected = [...selectedMenages].filter(i=>visibleIdxs.includes(i)).length;
 
   const rows = visibles.map(({m, idx})=>{
     const cells = QUESTIONNAIRES.map(q=>`
@@ -916,6 +930,7 @@ function renderTeamDetailIT(n){
       : `<span class="pill en_cours">En cours</span>`;
     return `
       <tr>
+        <td><input type="checkbox" ${selectedMenages.has(idx)?"checked":""} onchange="toggleSelectMenage(${idx}, this.checked)"></td>
         <td class="code">${menageId(m)}</td>
         ${cells}
         <td>${statutPill}</td>
@@ -947,15 +962,17 @@ function renderTeamDetailIT(n){
       ${total ? `
       <div class="toolbar">
         <input type="text" placeholder="Rechercher un menage (ID)..." style="max-width:320px;" value="${itDetailSearch}" oninput="setITDetailSearch(this.value)">
+        ${nbSelected ? `<button class="btn danger auto" onclick="deleteSelectedMenages(${n})">Supprimer la selection (${nbSelected})</button>` : ``}
       </div>` : ``}
       <div class="panel" style="padding:0;">
         <div class="table-wrap">
         ${total ? `
         <table>
           <thead><tr>
+            <th><input type="checkbox" ${allVisibleSelected?"checked":""} onchange="toggleSelectAllMenages(this.checked, [${visibleIdxs.join(",")}])"></th>
             <th>ID menage</th>${QUESTIONNAIRES.map(q=>`<th>${q.label}</th>`).join("")}<th>Statut</th><th></th>
           </tr></thead>
-          <tbody>${rows.length ? rows : `<tr><td colspan="7" class="empty">Aucun menage ne correspond a la recherche</td></tr>`}</tbody>
+          <tbody>${rows.length ? rows : `<tr><td colspan="8" class="empty">Aucun menage ne correspond a la recherche</td></tr>`}</tbody>
         </table>` : `<div class="empty">Aucun menage affecte a cette equipe pour le moment.</div>`}
         </div>
       </div>
@@ -968,7 +985,20 @@ async function deleteMenage(n, idx){
   if(!confirm("Supprimer ce menage de la liste de l'equipe " + n + " ? Cette action est irreversible.")) return;
   const coll = collecteCache[n] || defaultCollecte();
   coll.menages.splice(idx, 1);
+  selectedMenages = new Set([...selectedMenages].filter(i=>i!==idx).map(i=>i>idx?i-1:i));
   await saveCollecte(n, coll);
+  renderTeamDetailIT(n);
+}
+
+async function deleteSelectedMenages(n){
+  const idxs = [...selectedMenages].sort((a,b)=>b-a);
+  if(!idxs.length) return;
+  if(!confirm(`Supprimer les ${idxs.length} menage(s) selectionne(s) de l'equipe ${n} ? Cette action est irreversible.`)) return;
+  const coll = collecteCache[n] || defaultCollecte();
+  idxs.forEach(i => coll.menages.splice(i, 1));
+  selectedMenages = new Set();
+  await saveCollecte(n, coll);
+  setFlash(`${idxs.length} menage(s) supprime(s).`, "success");
   renderTeamDetailIT(n);
 }
 
@@ -1196,6 +1226,9 @@ window.setITDetailSearch = setITDetailSearch;
 window.openTeamDetailIT = openTeamDetailIT;
 window.closeTeamDetailIT = closeTeamDetailIT;
 window.deleteMenage = deleteMenage;
+window.deleteSelectedMenages = deleteSelectedMenages;
+window.toggleSelectMenage = toggleSelectMenage;
+window.toggleSelectAllMenages = toggleSelectAllMenages;
 window.openImportMenages = openImportMenages;
 window.openAddMenageModal = openAddMenageModal;
 window.openEditMenageModal = openEditMenageModal;

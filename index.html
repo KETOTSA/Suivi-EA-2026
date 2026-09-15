@@ -626,6 +626,21 @@ async function toggleQ(n, idx, field, value){
 let filters = { statut: "tous", milieu: "tous", zd: "tous" };
 let itTab = "denombrement";
 let menagesModal = null;
+let itFlash = null;
+function setFlash(msg, type){ itFlash = { msg, type: type || "success" }; }
+function flashBanner(){
+  if(!itFlash) return "";
+  const bg = itFlash.type === "error" ? "var(--warn-bg)" : "var(--success-bg)";
+  const col = itFlash.type === "error" ? "#8A3520" : "#1F5C3A";
+  const border = itFlash.type === "error" ? "#E8C3B5" : "#BEDBC9";
+  return `
+    <div style="background:${bg}; color:${col}; border:1px solid ${border}; border-radius:3px; padding:12px 16px; margin-bottom:16px; display:flex; justify-content:space-between; align-items:center; gap:10px;">
+      <span>${itFlash.msg}</span>
+      <button class="btn ghost small" style="border-color:${col}; color:${col};" onclick="clearFlash()">OK</button>
+    </div>
+  `;
+}
+function clearFlash(){ itFlash = null; (itTeamDetail ? renderTeamDetailIT(itTeamDetail) : renderCollecteIT()); }
 let itTeamDetail = null; // team number when viewing a team's household detail
 let itSearch = "";
 
@@ -841,6 +856,7 @@ function renderCollecteIT(){
     ${topbar("Equipe IT", "Suivi de la collecte")}
     <main>
       ${itTabBar()}
+      ${flashBanner()}
       <div class="stat-row">
         <div class="stat"><div class="num">${totalMenages}</div><div class="lbl">Menages affectes (total)</div></div>
         <div class="stat"><div class="num">${totalComplets}</div><div class="lbl">Menages entierement enquetes</div></div>
@@ -917,6 +933,7 @@ function renderTeamDetailIT(n){
     ${topbar("Equipe IT", "Detail collecte - Equipe " + n)}
     <main>
       <button class="btn ghost" style="margin-bottom:16px;" onclick="closeTeamDetailIT()">&larr; Retour au suivi collecte</button>
+      ${flashBanner()}
       <div class="team-id-card">
         <div>
           <div class="name">${team.nom}</div>
@@ -1077,8 +1094,14 @@ async function submitImportMenages(){
   const ilotCol = parseInt(document.getElementById("mm-col-ilot").value);
   const lotCol = parseInt(document.getElementById("mm-col-lot").value);
   const numCol = parseInt(document.getElementById("mm-col-numero").value);
-  if(equipeCol < 0 || numCol < 0){ alert("La colonne Equipe et la colonne Numero de menage sont obligatoires."); return; }
-  if(ilotCol>=0 && ilotCol===lotCol){ alert("Les colonnes Ilot et Lot pointent vers la meme colonne du fichier. Corrigez l'une des deux avant d'importer."); return; }
+  if(equipeCol < 0 || numCol < 0){
+    if(errBox){ errBox.textContent = "La colonne Equipe et la colonne Numero de menage sont obligatoires."; errBox.style.display = "block"; }
+    return;
+  }
+  if(ilotCol>=0 && ilotCol===lotCol){
+    if(errBox){ errBox.textContent = "Les colonnes Ilot et Lot pointent vers la meme colonne du fichier. Corrigez l'une des deux avant d'importer."; errBox.style.display = "block"; }
+    return;
+  }
 
   if(btn){ btn.disabled = true; btn.textContent = "Import en cours..."; }
 
@@ -1112,8 +1135,8 @@ async function submitImportMenages(){
     }
 
     menagesModal = null;
+    setFlash(`${added} menage(s) importe(s)${skipped ? ", " + skipped + " ignore(s) (equipe invalide, doublon ou ligne incomplete)" : ""}.`, added > 0 ? "success" : "error");
     (itTeamDetail ? renderTeamDetailIT(itTeamDetail) : renderCollecteIT());
-    alert(`${added} menage(s) importe(s)${skipped ? ", " + skipped + " ignore(s) (equipe invalide, doublon ou ligne incomplete)" : ""}.`);
   }catch(e){
     console.error("submitImportMenages", e);
     if(btn){ btn.disabled = false; btn.textContent = "Importer"; }
@@ -1178,6 +1201,7 @@ window.openAddMenageModal = openAddMenageModal;
 window.openEditMenageModal = openEditMenageModal;
 window.closeMenagesModal = closeMenagesModal;
 window.closeMenagesModalOnOverlay = closeMenagesModalOnOverlay;
+window.clearFlash = clearFlash;
 window.onMenagesFileChosen = onMenagesFileChosen;
 window.submitImportMenages = submitImportMenages;
 window.submitAddMenage = submitAddMenage;

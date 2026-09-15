@@ -179,6 +179,7 @@
   .qsel.st-todo{ background:#fff; color:var(--muted); }
   .qsel.st-done{ background:var(--success-bg); color:#1F5C3A; }
   .qsel.st-rejected{ background:var(--warn-bg); color:#8A3520; }
+  .qsel.st-na{ background:#EEF1F6; color:var(--muted); font-style:italic; }
   .toolbar{ display:flex; gap:10px; margin-bottom:16px; flex-wrap:wrap; align-items:flex-end; }
   .overlay{ position:fixed; inset:0; background:rgba(19,43,76,.45); display:flex; align-items:center; justify-content:center; z-index:50; padding:20px; }
 </style>
@@ -317,12 +318,13 @@ const QUESTIONNAIRES = [
 const Q_STATUTS = [
   {value:"todo", label:"A faire"},
   {value:"done", label:"Fait"},
+  {value:"na", label:"Non concerne"},
   {value:"rejected", label:"Rejete"}
 ];
 let collecteCache = {};
 let collecteLoaded = false;
 
-function defaultCollecte(){ return { menages: [] }; }
+function defaultCollecte(){ return { menages: [], totalAffecte: null, nbEnquetes: 0 }; }
 function defaultMenageQ(){ return { q_menage:"todo", q_senior:"todo", q_enfants:"todo", q_education:"todo" }; }
 
 async function loadCollecte(n){
@@ -352,7 +354,7 @@ async function loadAllCollecte(){
   return collecteCache;
 }
 
-function menageComplet(m){ return QUESTIONNAIRES.every(q => m[q.key] === "done"); }
+function menageComplet(m){ return QUESTIONNAIRES.every(q => m[q.key] === "done" || m[q.key] === "na"); }
 function menageRejete(m){ return QUESTIONNAIRES.some(q => m[q.key] === "rejected"); }
 function menageId(m){ return `EA2026/${m.zd||""}/${m.ilot||""}/${m.lot||""}/${m.numero||""}`; }
 function qStatusLabel(v){ return (Q_STATUTS.find(s=>s.value===v)||Q_STATUTS[0]).label; }
@@ -542,11 +544,62 @@ async function renderTeamDone(n, data){
     return;
   }
 
-  render(`${topbar("Espace chef d'equipe", "Equipe " + n)}<main><div class="panel"><p class="loading-msg">Chargement de vos menages...</p></div></main>`);
+  render(`${topbar("Espace chef d'equipe", "Equipe " + n)}<main><div class="panel"><p class="loading-msg">Chargement...</p></div></main>`);
   const coll = await loadCollecte(n);
   collecteCache[n] = coll;
+
+  if(team.milieu === "RURAL"){
+    renderCollecteChefRural(n, team, data, coll);
+    return;
+  }
+
   chefSearch = "";
   renderCollecteChefBody(n, team, data, coll);
+}
+
+function renderCollecteChefRural(n, team, data, coll){
+  const hasTotal = coll.totalAffecte !== null && coll.totalAffecte !== undefined;
+  render(`
+    ${topbar("Espace chef d'equipe", "Equipe " + n)}
+    <main>
+      <div class="team-id-card">
+        <div>
+          <div class="name">${team.nom}</div>
+          <div class="meta">Equipe ${n} &middot; Rural &middot; ZD ${team.zd}</div>
+        </div>
+      </div>
+      <div class="panel">
+        <div class="info-msg">Enquete affectee le ${fmtDate(data.dateAssignation)}. Indiquez ici, au fur et a mesure, combien de menages vous avez enquetes.</div>
+      </div>
+      <div class="stat-row" style="grid-template-columns:1fr;">
+        <div class="stat"><div class="num">${coll.nbEnquetes || 0}${hasTotal ? "/"+coll.totalAffecte : ""}</div><div class="lbl">Menages enquetes</div></div>
+      </div>
+      <div class="panel">
+        ${hasTotal ? `` : `<div class="hint" style="margin-bottom:14px;">Le nombre total de menages affectes n'a pas encore ete renseigne par l'equipe IT. Vous pouvez tout de meme mettre a jour votre compteur.</div>`}
+        <label for="nbEnquetesInput">Nombre de menages enquetes a ce jour</label>
+        <input id="nbEnquetesInput" type="number" min="0" value="${coll.nbEnquetes || 0}">
+        <div style="margin-top:16px; display:flex; gap:10px;">
+          <button class="btn auto" onclick="saveNbEnquetes(${n})">Enregistrer</button>
+          <button class="btn ghost" onclick="incrementNbEnquetes(${n})">+1 menage enquete</button>
+        </div>
+      </div>
+    </main>
+  `);
+}
+
+async function saveNbEnquetes(n){
+  const val = Math.max(0, parseInt(document.getElementById("nbEnquetesInput").value)||0);
+  const coll = collecteCache[n] || defaultCollecte();
+  coll.nbEnquetes = val;
+  await saveCollecte(n, coll);
+  renderCollecteChefRural(n, TEAM_BY_N[n], cache[n], coll);
+}
+
+async function incrementNbEnquetes(n){
+  const coll = collecteCache[n] || defaultCollecte();
+  coll.nbEnquetes = (coll.nbEnquetes || 0) + 1;
+  await saveCollecte(n, coll);
+  renderCollecteChefRural(n, TEAM_BY_N[n], cache[n], coll);
 }
 
 let chefSearch = "";
@@ -813,11 +866,31 @@ async function resetTeam(n){
 }
 
 /* ============ Equipe IT - onglet Collecte ============ */
+async function updateTotalAffecte(n, val){
+  const coll = collecteCache[n] || defaultCollecte();
+  coll.totalAffecte = val === "" ? null : Math.max(0, parseInt(val)||0);
+  await saveCollecte(n, coll);
+  renderCollecteIT();
+}
+
+async function updateNbEnquetesIT(n, val){
+  const coll = collecteCache[n] || defaultCollecte();
+  coll.nbEnquetes = Math.max(0, parseInt(val)||0);
+  await saveCollecte(n, coll);
+  renderCollecteIT();
+}
+
 function renderCollecteIT(){
   if(itTeamDetail){ renderTeamDetailIT(itTeamDetail); return; }
 
   let teamRows = TEAMS.map(t=>{
     const coll = collecteCache[t.n] || defaultCollecte();
+    if(t.milieu === "RURAL"){
+      const total = coll.totalAffecte || 0;
+      const complets = coll.nbEnquetes || 0;
+      const pct = total ? Math.round(100*complets/total) : 0;
+      return { t, coll, total, complets, rejetes: 0, pct };
+    }
     const total = coll.menages.length;
     const complets = coll.menages.filter(menageComplet).length;
     const rejetes = coll.menages.filter(menageRejete).length;
@@ -834,23 +907,39 @@ function renderCollecteIT(){
   const totalRejetes = teamRows.reduce((s,r)=>s+r.rejetes,0);
   const teamsComplets = teamRows.filter(r=>r.total>0 && r.complets===r.total).length;
 
-  const trs = teamRows.map(({t,coll,total,complets,rejetes,pct})=>`
-    <tr>
-      <td>${t.n}</td>
-      <td>${t.nom}</td>
-      <td class="code">${t.zd}</td>
-      <td>${total}</td>
-      <td>${complets}</td>
-      <td>${rejetes ? `<span class="pill rejete">${rejetes}</span>` : "0"}</td>
-      <td>${total ? pct+"%" : "-"}</td>
-      <td class="row-actions">
-        <div style="display:flex;flex-direction:column;gap:6px;align-items:flex-start;">
-          <button class="btn ghost small" onclick="openTeamDetailIT(${t.n})">Detail</button>
-          <button class="btn ghost small" onclick="openAddMenageModal(${t.n})">+ Menage</button>
-        </div>
-      </td>
-    </tr>
-  `).join("");
+  const trs = teamRows.map(({t,coll,total,complets,rejetes,pct})=>{
+    if(t.milieu === "RURAL"){
+      return `
+        <tr>
+          <td>${t.n}</td>
+          <td>${t.nom}</td>
+          <td class="code">${t.zd}</td>
+          <td><input type="number" min="0" value="${coll.totalAffecte ?? ''}" placeholder="-" style="width:80px;padding:5px 7px;" onchange="updateTotalAffecte(${t.n}, this.value)"></td>
+          <td><input type="number" min="0" value="${coll.nbEnquetes || 0}" style="width:80px;padding:5px 7px;" onchange="updateNbEnquetesIT(${t.n}, this.value)"></td>
+          <td>-</td>
+          <td>${total ? pct+"%" : "-"}</td>
+          <td class="row-actions"><span class="hint">Rural (suivi simplifie)</span></td>
+        </tr>
+      `;
+    }
+    return `
+      <tr>
+        <td>${t.n}</td>
+        <td>${t.nom}</td>
+        <td class="code">${t.zd}</td>
+        <td>${total}</td>
+        <td>${complets}</td>
+        <td>${rejetes ? `<span class="pill rejete">${rejetes}</span>` : "0"}</td>
+        <td>${total ? pct+"%" : "-"}</td>
+        <td class="row-actions">
+          <div style="display:flex;flex-direction:column;gap:6px;align-items:flex-start;">
+            <button class="btn ghost small" onclick="openTeamDetailIT(${t.n})">Detail</button>
+            <button class="btn ghost small" onclick="openAddMenageModal(${t.n})">+ Menage</button>
+          </div>
+        </td>
+      </tr>
+    `;
+  }).join("");
 
   render(`
     ${topbar("Equipe IT", "Suivi de la collecte")}
@@ -868,7 +957,7 @@ function renderCollecteIT(){
         <input type="text" placeholder="Rechercher une equipe (nom ou numero)..." style="max-width:320px;" value="${itSearch}" oninput="setITSearch(this.value)">
         <button class="btn amber auto" onclick="openImportMenages()">Importer des menages (CSV / Excel)</button>
       </div>
-      <p class="hint" style="margin-bottom:16px;">Colonnes attendues : Equipe (numero 1 a 40), ZD, Ilot, Lot, Numero de menage. Identifiant genere : EA2026/ZD/ILOT/LOT/MEN.</p>
+      <p class="hint" style="margin-bottom:16px;">Equipes urbaines : colonnes Equipe, ZD, Ilot, Lot, Numero de menage. Identifiant genere : EA2026/ZD/ILOT/LOT/MEN. Equipes rurales : suivi simplifie (total affecte + nombre enquete), a renseigner directement dans le tableau.</p>
 
       <div class="panel" style="padding:0;">
         <div class="table-wrap">
@@ -1229,6 +1318,10 @@ window.deleteMenage = deleteMenage;
 window.deleteSelectedMenages = deleteSelectedMenages;
 window.toggleSelectMenage = toggleSelectMenage;
 window.toggleSelectAllMenages = toggleSelectAllMenages;
+window.saveNbEnquetes = saveNbEnquetes;
+window.incrementNbEnquetes = incrementNbEnquetes;
+window.updateTotalAffecte = updateTotalAffecte;
+window.updateNbEnquetesIT = updateNbEnquetesIT;
 window.openImportMenages = openImportMenages;
 window.openAddMenageModal = openAddMenageModal;
 window.openEditMenageModal = openEditMenageModal;

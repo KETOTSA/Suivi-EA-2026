@@ -1020,8 +1020,9 @@ function renderMenagesModal(){
           <label>Numero de menage</label>
           <select id="mm-col-numero">${opt(menagesModal.numCol)}</select>
           <div class="hint" style="margin-top:10px;">${menagesModal.dataRows.length} ligne(s) detectee(s).</div>
+          <div id="mm-import-error" class="error" style="display:none;"></div>
           <div style="margin-top:18px; display:flex; gap:10px;">
-            <button class="btn auto" onclick="submitImportMenages()">Importer</button>
+            <button id="mm-import-btn" class="btn auto" onclick="submitImportMenages()">Importer</button>
             <button class="btn ghost" onclick="closeMenagesModal()">Annuler</button>
           </div>
         </div>
@@ -1031,8 +1032,12 @@ function renderMenagesModal(){
   return "";
 }
 
-function guessMenageCol(headers, keywords){
-  const idx = headers.findIndex(h => keywords.some(k => String(h).toLowerCase().includes(k)));
+function guessMenageCol(headers, keywords, excludeKeywords){
+  const idx = headers.findIndex(h => {
+    const hl = String(h).toLowerCase();
+    if(excludeKeywords && excludeKeywords.some(k => hl.includes(k))) return false;
+    return keywords.some(k => hl.includes(k));
+  });
   return idx >= 0 ? idx : -1;
 }
 
@@ -1053,7 +1058,7 @@ function onMenagesFileChosen(file){
         equipeCol: guessMenageCol(headers, ["equipe","équipe","team","chef","superviseur"]),
         zdCol: guessMenageCol(headers, ["zd","zone"]),
         ilotCol: guessMenageCol(headers, ["ilot","ilôt"]),
-        lotCol: guessMenageCol(headers, ["lot","concession"]),
+        lotCol: guessMenageCol(headers, ["lot","concession"], ["ilot","ilôt"]),
         numCol: guessMenageCol(headers, ["numero","numéro","menage","ménage","n°"])
       };
       (itTeamDetail ? renderTeamDetailIT(itTeamDetail) : renderCollecteIT());
@@ -1063,44 +1068,57 @@ function onMenagesFileChosen(file){
 }
 
 async function submitImportMenages(){
+  const btn = document.getElementById("mm-import-btn");
+  const errBox = document.getElementById("mm-import-error");
+  if(errBox){ errBox.style.display = "none"; }
+
   const equipeCol = parseInt(document.getElementById("mm-col-equipe").value);
   const zdCol = parseInt(document.getElementById("mm-col-zd").value);
   const ilotCol = parseInt(document.getElementById("mm-col-ilot").value);
   const lotCol = parseInt(document.getElementById("mm-col-lot").value);
   const numCol = parseInt(document.getElementById("mm-col-numero").value);
   if(equipeCol < 0 || numCol < 0){ alert("La colonne Equipe et la colonne Numero de menage sont obligatoires."); return; }
+  if(ilotCol>=0 && ilotCol===lotCol){ alert("Les colonnes Ilot et Lot pointent vers la meme colonne du fichier. Corrigez l'une des deux avant d'importer."); return; }
 
-  const byTeam = {};
-  let added = 0, skipped = 0;
-  menagesModal.dataRows.forEach(row=>{
-    const teamN = parseInt(String(row[equipeCol]||"").trim(), 10);
-    if(!teamN || !TEAM_BY_N[teamN]) { skipped++; return; }
-    const zd = zdCol>=0 ? String(row[zdCol]||"").trim() : TEAM_BY_N[teamN].zd;
-    const ilot = ilotCol>=0 ? String(row[ilotCol]||"").trim() : "";
-    const lot = lotCol>=0 ? String(row[lotCol]||"").trim() : "";
-    const numero = String(row[numCol]||"").trim();
-    if(!numero){ skipped++; return; }
-    if(!byTeam[teamN]) byTeam[teamN] = [];
-    byTeam[teamN].push(Object.assign({zd, ilot, lot, numero}, defaultMenageQ()));
-  });
+  if(btn){ btn.disabled = true; btn.textContent = "Import en cours..."; }
 
-  const teamNums = Object.keys(byTeam).map(Number);
-  for(const teamN of teamNums){
-    const coll = collecteCache[teamN] || defaultCollecte();
-    const existingIds = new Set(coll.menages.map(menageId));
-    byTeam[teamN].forEach(m=>{
-      const id = menageId(m);
-      if(existingIds.has(id)){ skipped++; return; }
-      coll.menages.push(m);
-      existingIds.add(id);
-      added++;
+  try{
+    const byTeam = {};
+    let added = 0, skipped = 0;
+    menagesModal.dataRows.forEach(row=>{
+      const teamN = parseInt(String(row[equipeCol]||"").trim(), 10);
+      if(!teamN || !TEAM_BY_N[teamN]) { skipped++; return; }
+      const zd = zdCol>=0 ? String(row[zdCol]||"").trim() : TEAM_BY_N[teamN].zd;
+      const ilot = ilotCol>=0 ? String(row[ilotCol]||"").trim() : "";
+      const lot = lotCol>=0 ? String(row[lotCol]||"").trim() : "";
+      const numero = String(row[numCol]||"").trim();
+      if(!numero){ skipped++; return; }
+      if(!byTeam[teamN]) byTeam[teamN] = [];
+      byTeam[teamN].push(Object.assign({zd, ilot, lot, numero}, defaultMenageQ()));
     });
-    await saveCollecte(teamN, coll);
-  }
 
-  menagesModal = null;
-  (itTeamDetail ? renderTeamDetailIT(itTeamDetail) : renderCollecteIT());
-  alert(`${added} menage(s) importe(s)${skipped ? ", " + skipped + " ignore(s) (equipe invalide, doublon ou ligne incomplete)" : ""}.`);
+    const teamNums = Object.keys(byTeam).map(Number);
+    for(const teamN of teamNums){
+      const coll = collecteCache[teamN] || defaultCollecte();
+      const existingIds = new Set(coll.menages.map(menageId));
+      byTeam[teamN].forEach(m=>{
+        const id = menageId(m);
+        if(existingIds.has(id)){ skipped++; return; }
+        coll.menages.push(m);
+        existingIds.add(id);
+        added++;
+      });
+      await saveCollecte(teamN, coll);
+    }
+
+    menagesModal = null;
+    (itTeamDetail ? renderTeamDetailIT(itTeamDetail) : renderCollecteIT());
+    alert(`${added} menage(s) importe(s)${skipped ? ", " + skipped + " ignore(s) (equipe invalide, doublon ou ligne incomplete)" : ""}.`);
+  }catch(e){
+    console.error("submitImportMenages", e);
+    if(btn){ btn.disabled = false; btn.textContent = "Importer"; }
+    if(errBox){ errBox.textContent = "Echec de l'import : " + (e && e.message ? e.message : "erreur inconnue") + ". Verifiez la connexion internet et reessayez."; errBox.style.display = "block"; }
+  }
 }
 
 async function submitAddMenage(n){

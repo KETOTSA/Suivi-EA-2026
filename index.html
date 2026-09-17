@@ -1045,6 +1045,9 @@ async function updateTotalAffecteIT(n, val){
 let itMilieuFilter = "tous";
 function setITMilieuFilter(v){ itMilieuFilter = v; renderCollecteIT(); }
 
+let itSortMode = "numero";
+function setITSortMode(v){ itSortMode = v; renderCollecteIT(); }
+
 function exportCollecteExcel(){
   const resume = TEAMS.map(t=>{
     const coll = collecteCache[t.n] || defaultCollecte();
@@ -1127,7 +1130,12 @@ function renderCollecteIT(){
   const totalComplets = teamRows.reduce((s,r)=>s+r.complets,0);
   const totalRejetes = teamRows.reduce((s,r)=>s+r.rejetes,0);
 
-  const trs = teamRows.map(({t,coll,total,complets,rejetes,pct})=>{
+  if(itSortMode === "classement"){
+    teamRows = teamRows.slice().sort((a,b) => b.complets - a.complets || b.pct - a.pct || a.t.n - b.t.n);
+  }
+
+  const trs = teamRows.map(({t,coll,total,complets,rejetes,pct}, idx)=>{
+    const rankCell = itSortMode === "classement" ? `<td><strong>#${idx+1}</strong></td>` : `<td>${t.n}</td>`;
     if(t.milieu === "RURAL"){
       const locked = !!coll.totalApprouve;
       const hasProposal = coll.totalAffecte !== null && coll.totalAffecte !== undefined;
@@ -1139,7 +1147,7 @@ function renderCollecteIT(){
         : `<button class="btn ghost small" onclick="approveTotalAffecte(${t.n})" ${hasProposal?"":"disabled"}>Valider le total</button>`;
       return `
         <tr>
-          <td>${t.n}</td>
+          ${rankCell}
           <td>${t.nom}</td>
           <td class="code">${t.zd}</td>
           <td>${totalCell}</td>
@@ -1157,7 +1165,7 @@ function renderCollecteIT(){
     }
     return `
       <tr>
-        <td>${t.n}</td>
+        ${rankCell}
         <td>${t.nom}</td>
         <td class="code">${t.zd}</td>
         <td>${total}</td>
@@ -1195,6 +1203,13 @@ function renderCollecteIT(){
             <option value="URBAIN" ${itMilieuFilter==='URBAIN'?'selected':''}>Urbain</option>
           </select>
         </div>
+        <div class="fgroup">
+          <label for="itSortSelect">Trier par</label>
+          <select id="itSortSelect" onchange="setITSortMode(this.value)">
+            <option value="numero" ${itSortMode==='numero'?'selected':''}>Numero d'equipe</option>
+            <option value="classement" ${itSortMode==='classement'?'selected':''}>Classement (menages enquetes)</option>
+          </select>
+        </div>
         <div class="fgroup" style="flex:1; min-width:220px;">
           <label for="itSearchInput">Rechercher une equipe</label>
           <input id="itSearchInput" type="text" placeholder="Nom ou numero..." value="${itSearch}" oninput="setITSearch(this.value)">
@@ -1212,7 +1227,7 @@ function renderCollecteIT(){
         <div class="table-wrap">
         <table>
           <thead><tr>
-            <th>Eq.</th><th>Chef d'equipe</th><th>ZD</th><th>Menages affectes</th><th>Complets</th><th>Rejetes</th><th>%</th><th></th>
+            <th>${itSortMode === 'classement' ? 'Rang' : 'Eq.'}</th><th>Chef d'equipe</th><th>ZD</th><th>Menages affectes</th><th>Complets</th><th>Rejetes</th><th>%</th><th></th>
           </tr></thead>
           <tbody>${trs.length ? trs : `<tr><td colspan="8" class="empty">Aucune equipe ne correspond aux filtres</td></tr>`}</tbody>
         </table>
@@ -1642,6 +1657,7 @@ window.unapproveTotalAffecte = unapproveTotalAffecte;
 window.updateTotalAffecteIT = updateTotalAffecteIT;
 window.deleteMenageRuralIT = deleteMenageRuralIT;
 window.setITMilieuFilter = setITMilieuFilter;
+window.setITSortMode = setITSortMode;
 window.exportDenombrementExcel = exportDenombrementExcel;
 window.exportCollecteExcel = exportCollecteExcel;
 window.openImportMenages = openImportMenages;

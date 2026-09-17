@@ -297,6 +297,7 @@ const SESSION_KEY = "ea2026_session";
 
 /* ============ Utilitaires Firestore - denombrement ============ */
 const TOTAL_EQUIPES = 40;
+const QUOTA_URBAIN = 30; // objectif de menages a enqueter par equipe urbaine (hors reserve de remplacement)
 let cache = {};
 
 function padKey(n){ return String(n).padStart(2,"0"); }
@@ -686,6 +687,8 @@ function setChefSearch(v){ chefSearch = v; renderCollecteChefBody(session.team, 
 function renderCollecteChefBody(n, team, data, coll){
   const total = coll.menages.length;
   const complets = coll.menages.filter(menageComplet).length;
+  const versQuota = Math.min(complets, QUOTA_URBAIN);
+  const quotaAtteint = complets >= QUOTA_URBAIN;
 
   const visibles = coll.menages
     .map((m, idx)=>({m, idx}))
@@ -721,10 +724,11 @@ function renderCollecteChefBody(n, team, data, coll){
         </div>
       </div>
       <div class="panel">
-        <div class="info-msg">Enquete affectee le ${fmtDate(data.dateAssignation)}. Mettez a jour le statut de chaque questionnaire au fur et a mesure de l'administration aupres de chaque menage.</div>
+        <div class="info-msg">Enquete affectee le ${fmtDate(data.dateAssignation)}. Objectif : ${QUOTA_URBAIN} menages entierement enquetes (vous disposez de ${total} menages au total, dont une reserve de remplacement en cas de refus ou d'absence).</div>
       </div>
-      <div class="stat-row" style="grid-template-columns:1fr;">
-        <div class="stat"><div class="num">${complets}/${total}</div><div class="lbl">Menages entierement enquetes</div></div>
+      <div class="stat-row" style="grid-template-columns:1fr 1fr;">
+        <div class="stat"><div class="num">${versQuota}/${QUOTA_URBAIN}</div><div class="lbl">Progression vers le quota${quotaAtteint ? " - Quota atteint" : ""}</div></div>
+        <div class="stat"><div class="num">${complets}/${total}</div><div class="lbl">Menages complets sur le total disponible</div></div>
       </div>
       ${total ? `
       <div class="toolbar">
@@ -1056,8 +1060,8 @@ function exportCollecteExcel(){
       const complets = (coll.menagesRuraux || []).length;
       return {
         Equipe: t.n, Chef: t.nom, Milieu: t.milieu, ZD: t.zd,
-        Menages_affectes: total, Complets: complets, Rejetes: "",
-        Pourcentage: total ? Math.round(100*complets/total)+"%" : "",
+        Menages_affectes: total, Quota_cible: total, Complets: complets, Rejetes: "",
+        Pourcentage_vs_quota: total ? Math.round(100*Math.min(complets,total)/total)+"%" : "",
         Total_valide_IT: coll.totalApprouve ? "Oui" : "Non"
       };
     }
@@ -1066,8 +1070,8 @@ function exportCollecteExcel(){
     const rejetes = coll.menages.filter(menageRejete).length;
     return {
       Equipe: t.n, Chef: t.nom, Milieu: t.milieu, ZD: t.zd,
-      Menages_affectes: total, Complets: complets, Rejetes: rejetes,
-      Pourcentage: total ? Math.round(100*complets/total)+"%" : "",
+      Menages_affectes: total, Quota_cible: QUOTA_URBAIN, Complets: complets, Rejetes: rejetes,
+      Pourcentage_vs_quota: Math.round(100*Math.min(complets,QUOTA_URBAIN)/QUOTA_URBAIN)+"%",
       Total_valide_IT: ""
     };
   });
@@ -1111,14 +1115,16 @@ function renderCollecteIT(){
     if(t.milieu === "RURAL"){
       const total = coll.totalAffecte || 0;
       const complets = (coll.menagesRuraux || []).length;
-      const pct = total ? Math.round(100*complets/total) : 0;
-      return { t, coll, total, complets, rejetes: 0, pct };
+      const cible = total;
+      const pct = cible ? Math.round(100*Math.min(complets,cible)/cible) : 0;
+      return { t, coll, total, complets, rejetes: 0, cible, pct };
     }
     const total = coll.menages.length;
     const complets = coll.menages.filter(menageComplet).length;
     const rejetes = coll.menages.filter(menageRejete).length;
-    const pct = total ? Math.round(100*complets/total) : 0;
-    return { t, coll, total, complets, rejetes, pct };
+    const cible = QUOTA_URBAIN;
+    const pct = Math.round(100*Math.min(complets,cible)/cible);
+    return { t, coll, total, complets, rejetes, cible, pct };
   });
   if(itMilieuFilter !== "tous") teamRows = teamRows.filter(r => r.t.milieu === itMilieuFilter);
   if(itSearch){
@@ -1126,15 +1132,15 @@ function renderCollecteIT(){
     teamRows = teamRows.filter(r => r.t.nom.toLowerCase().includes(q) || String(r.t.n).includes(q));
   }
 
-  const totalMenages = teamRows.reduce((s,r)=>s+r.total,0);
-  const totalComplets = teamRows.reduce((s,r)=>s+r.complets,0);
+  const totalCible = teamRows.reduce((s,r)=>s+r.cible,0);
+  const totalComplets = teamRows.reduce((s,r)=>s+Math.min(r.complets,r.cible),0);
   const totalRejetes = teamRows.reduce((s,r)=>s+r.rejetes,0);
 
   if(itSortMode === "classement"){
     teamRows = teamRows.slice().sort((a,b) => b.complets - a.complets || b.pct - a.pct || a.t.n - b.t.n);
   }
 
-  const trs = teamRows.map(({t,coll,total,complets,rejetes,pct}, idx)=>{
+  const trs = teamRows.map(({t,coll,total,complets,rejetes,cible,pct}, idx)=>{
     const rankCell = itSortMode === "classement" ? `<td><strong>#${idx+1}</strong></td>` : `<td>${t.n}</td>`;
     if(t.milieu === "RURAL"){
       const locked = !!coll.totalApprouve;
@@ -1151,9 +1157,10 @@ function renderCollecteIT(){
           <td>${t.nom}</td>
           <td class="code">${t.zd}</td>
           <td>${totalCell}</td>
+          <td class="hint">${cible || "-"}</td>
           <td>${complets}</td>
           <td>-</td>
-          <td>${total ? pct+"%" : "-"}</td>
+          <td>${cible ? pct+"%" : "-"}</td>
           <td class="row-actions">
             <div style="display:flex;flex-direction:column;gap:6px;align-items:flex-start;">
               <button class="btn ghost small" onclick="openTeamDetailIT(${t.n})">Detail</button>
@@ -1169,9 +1176,10 @@ function renderCollecteIT(){
         <td>${t.nom}</td>
         <td class="code">${t.zd}</td>
         <td>${total}</td>
-        <td>${complets}</td>
+        <td class="hint">${cible}</td>
+        <td>${complets}${complets>cible ? ` <span class="hint">(dont remplacement)</span>` : ""}</td>
         <td>${rejetes ? `<span class="pill rejete">${rejetes}</span>` : "0"}</td>
-        <td>${total ? pct+"%" : "-"}</td>
+        <td>${pct}%</td>
         <td class="row-actions">
           <div style="display:flex;flex-direction:column;gap:6px;align-items:flex-start;">
             <button class="btn ghost small" onclick="openTeamDetailIT(${t.n})">Detail</button>
@@ -1188,10 +1196,10 @@ function renderCollecteIT(){
       ${itTabBar()}
       ${flashBanner()}
       <div class="stat-row">
-        <div class="stat"><div class="num">${totalMenages}</div><div class="lbl">Menages affectes (total)</div></div>
-        <div class="stat"><div class="num">${totalComplets}</div><div class="lbl">Menages entierement enquetes</div></div>
+        <div class="stat"><div class="num">${totalCible}</div><div class="lbl">Objectif total (quota 30/equipe urbaine + totaux ruraux valides)</div></div>
+        <div class="stat"><div class="num">${totalComplets}</div><div class="lbl">Menages entierement enquetes (dans la limite du quota)</div></div>
         <div class="stat"><div class="num">${totalRejetes}</div><div class="lbl">Questionnaires rejetes</div></div>
-        <div class="stat"><div class="num">${totalMenages ? Math.round(100*totalComplets/totalMenages) : 0}%</div><div class="lbl">Avancement global</div></div>
+        <div class="stat"><div class="num">${totalCible ? Math.round(100*totalComplets/totalCible) : 0}%</div><div class="lbl">Avancement global vs quota</div></div>
       </div>
 
       <div class="filters-row">
@@ -1227,9 +1235,9 @@ function renderCollecteIT(){
         <div class="table-wrap">
         <table>
           <thead><tr>
-            <th>${itSortMode === 'classement' ? 'Rang' : 'Eq.'}</th><th>Chef d'equipe</th><th>ZD</th><th>Menages affectes</th><th>Complets</th><th>Rejetes</th><th>%</th><th></th>
+            <th>${itSortMode === 'classement' ? 'Rang' : 'Eq.'}</th><th>Chef d'equipe</th><th>ZD</th><th>Affectes</th><th>Quota</th><th>Complets</th><th>Rejetes</th><th>%</th><th></th>
           </tr></thead>
-          <tbody>${trs.length ? trs : `<tr><td colspan="8" class="empty">Aucune equipe ne correspond aux filtres</td></tr>`}</tbody>
+          <tbody>${trs.length ? trs : `<tr><td colspan="9" class="empty">Aucune equipe ne correspond aux filtres</td></tr>`}</tbody>
         </table>
         </div>
       </div>

@@ -356,7 +356,7 @@ const Q_STATUTS = [
 let collecteCache = {};
 let collecteLoaded = false;
 
-function defaultCollecte(){ return { menages: [], totalAffecte: null, totalApprouve: false, menagesRuraux: [] }; }
+function defaultCollecte(){ return { menages: [], totalAffecte: null, totalApprouve: false, nbEnquetes: 0, menagesRuraux: [] }; }
 function defaultMenageQ(){ return { q_menage:"todo", q_senior:"todo", q_enfants:"todo", q_education:"todo" }; }
 
 async function loadCollecte(n){
@@ -595,17 +595,9 @@ async function renderTeamDone(n, data){
 }
 
 function renderCollecteChefRural(n, team, data, coll){
-  const nbMenages = (coll.menagesRuraux || []).length;
-  const hasTotal = coll.totalAffecte !== null && coll.totalAffecte !== undefined;
   const locked = !!coll.totalApprouve;
-
-  const listRows = (coll.menagesRuraux || []).map((m, idx) => `
-    <tr>
-      <td>${m.label}</td>
-      <td>${fmtDate(m.date)}</td>
-      <td class="row-actions"><button class="btn danger small" onclick="deleteMenageRural(${n}, ${idx})">Suppr.</button></td>
-    </tr>
-  `).reverse().join("");
+  const nbEnquetesActuel = coll.nbEnquetes ?? (coll.menagesRuraux ? coll.menagesRuraux.length : 0);
+  const hasTotal = coll.totalAffecte !== null && coll.totalAffecte !== undefined;
 
   render(`
     ${topbar("Espace chef d'equipe", "Equipe " + n)}
@@ -617,68 +609,37 @@ function renderCollecteChefRural(n, team, data, coll){
         </div>
       </div>
       <div class="panel">
-        <div class="info-msg">Enquete affectee le ${fmtDate(data.dateAssignation)}. Ajoutez chaque menage des que vous l'avez enquete, a tout moment.</div>
+        <div class="info-msg">Enquete affectee le ${fmtDate(data.dateAssignation)}. Mettez a jour ces deux nombres a chaque fois que necessaire, autant de fois que vous voulez.</div>
       </div>
       <div class="stat-row" style="grid-template-columns:1fr;">
-        <div class="stat"><div class="num">${nbMenages}${hasTotal ? "/"+coll.totalAffecte : ""}</div><div class="lbl">Menages enquetes</div></div>
+        <div class="stat"><div class="num">${nbEnquetesActuel}${hasTotal ? "/"+coll.totalAffecte : ""}</div><div class="lbl">Menages enquetes</div></div>
       </div>
 
       <div class="panel">
-        <label for="totalAffecteInput">Nombre total de menages qui vous ont ete affectes</label>
+        <label for="totalAffecteInput">Nombre de menages denombres (total)</label>
         <input id="totalAffecteInput" type="number" min="0" value="${coll.totalAffecte ?? ''}" ${locked ? "disabled" : ""}>
-        ${locked
-          ? `<div class="hint" style="margin-top:6px;">Valide par l'equipe IT - vous ne pouvez plus le modifier. Contactez l'equipe IT pour toute correction.</div>`
-          : `<div style="margin-top:12px;"><button class="btn ghost" onclick="saveTotalAffecteChef(${n})">Enregistrer ce total</button></div>
-             <div class="hint" style="margin-top:6px;">Ce total est encore modifiable tant que l'equipe IT ne l'a pas valide.</div>`}
-      </div>
+        ${locked ? `<div class="hint" style="margin-top:6px;">Valide par l'equipe IT - vous ne pouvez plus le modifier. Contactez l'equipe IT pour toute correction.</div>` : ``}
 
-      <div class="panel">
-        <label for="menageLabelInput">Nom ou repere du menage enqu&ecirc;t&eacute;</label>
-        <input id="menageLabelInput" type="text" placeholder="ex. Menage du chef X, quartier Y">
-        <div style="margin-top:12px;"><button class="btn auto" onclick="addMenageRural(${n})">+ Ajouter ce menage</button></div>
-      </div>
+        <label for="nbEnquetesInput">Nombre de menages enquetes</label>
+        <input id="nbEnquetesInput" type="number" min="0" value="${nbEnquetesActuel}">
 
-      <div class="panel" style="padding:0;">
-        <div class="table-wrap">
-        ${nbMenages ? `
-        <table>
-          <thead><tr><th>Menage</th><th>Ajoute le</th><th></th></tr></thead>
-          <tbody>${listRows}</tbody>
-        </table>` : `<div class="empty">Aucun menage ajoute pour le moment.</div>`}
-        </div>
+        <div style="margin-top:16px;"><button class="btn auto" onclick="updateRuralCounts(${n})">Mettre a jour</button></div>
       </div>
     </main>
   `);
 }
 
-async function saveTotalAffecteChef(n){
-  const val = Math.max(0, parseInt(document.getElementById("totalAffecteInput").value)||0);
+async function updateRuralCounts(n){
   const coll = collecteCache[n] || defaultCollecte();
-  coll.totalAffecte = val;
+  const nbEnq = Math.max(0, parseInt(document.getElementById("nbEnquetesInput").value)||0);
+  coll.nbEnquetes = nbEnq;
+  if(!coll.totalApprouve){
+    const totalVal = document.getElementById("totalAffecteInput").value;
+    coll.totalAffecte = totalVal === "" ? null : Math.max(0, parseInt(totalVal)||0);
+  }
   collecteCache[n] = coll;
   renderCollecteChefRural(n, TEAM_BY_N[n], cache[n], coll);
-  saveCollecte(n, coll).catch(e=>console.error("saveTotalAffecteChef", e));
-}
-
-async function addMenageRural(n){
-  const input = document.getElementById("menageLabelInput");
-  const label = input.value.trim();
-  if(!label) return;
-  const coll = collecteCache[n] || defaultCollecte();
-  if(!coll.menagesRuraux) coll.menagesRuraux = [];
-  coll.menagesRuraux.push({ label, date: todayISO() });
-  collecteCache[n] = coll;
-  renderCollecteChefRural(n, TEAM_BY_N[n], cache[n], coll);
-  saveCollecte(n, coll).catch(e=>console.error("addMenageRural", e));
-}
-
-async function deleteMenageRural(n, idx){
-  if(!confirm("Retirer ce menage de votre liste ?")) return;
-  const coll = collecteCache[n] || defaultCollecte();
-  coll.menagesRuraux.splice(idx, 1);
-  collecteCache[n] = coll;
-  renderCollecteChefRural(n, TEAM_BY_N[n], cache[n], coll);
-  saveCollecte(n, coll).catch(e=>console.error("deleteMenageRural", e));
+  saveCollecte(n, coll).catch(e=>console.error("updateRuralCounts", e));
 }
 
 let chefSearch = "";
@@ -1057,7 +1018,7 @@ function exportCollecteExcel(){
     const coll = collecteCache[t.n] || defaultCollecte();
     if(t.milieu === "RURAL"){
       const total = coll.totalAffecte || 0;
-      const complets = (coll.menagesRuraux || []).length;
+      const complets = coll.nbEnquetes || 0;
       return {
         Equipe: t.n, Chef: t.nom, Milieu: t.milieu, ZD: t.zd,
         Menages_affectes: total, Quota_cible: total, Complets: complets, Rejetes: "",
@@ -1092,18 +1053,9 @@ function exportCollecteExcel(){
     });
   });
 
-  const menagesRuraux = [];
-  TEAMS.filter(t=>t.milieu==="RURAL").forEach(t=>{
-    const coll = collecteCache[t.n] || defaultCollecte();
-    (coll.menagesRuraux || []).forEach(m=>{
-      menagesRuraux.push({ Equipe: t.n, Menage: m.label, Date_ajout: m.date || "" });
-    });
-  });
-
   const wb = XLSX.utils.book_new();
   XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(resume), "Resume equipes");
   if(menagesUrbains.length) XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(menagesUrbains), "Menages urbains");
-  if(menagesRuraux.length) XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(menagesRuraux), "Menages ruraux");
   XLSX.writeFile(wb, "suivi_collecte_" + todayISO() + ".xlsx");
 }
 
@@ -1114,7 +1066,7 @@ function renderCollecteIT(){
     const coll = collecteCache[t.n] || defaultCollecte();
     if(t.milieu === "RURAL"){
       const total = coll.totalAffecte || 0;
-      const complets = (coll.menagesRuraux || []).length;
+      const complets = coll.nbEnquetes || 0;
       const cible = total;
       const pct = cible ? Math.round(100*Math.min(complets,cible)/cible) : 0;
       return { t, coll, total, complets, rejetes: 0, cible, pct };
@@ -1267,14 +1219,7 @@ function toggleSelectAllMenages(checked, visibleIdxs){
 
 function renderTeamDetailITRural(n, team, coll){
   const locked = !!coll.totalApprouve;
-  const list = coll.menagesRuraux || [];
-  const rows = list.map((m, idx) => `
-    <tr>
-      <td>${m.label}</td>
-      <td>${fmtDate(m.date)}</td>
-      <td class="row-actions"><button class="btn danger small" onclick="deleteMenageRuralIT(${n}, ${idx})">Suppr.</button></td>
-    </tr>
-  `).reverse().join("");
+  const nbEnq = coll.nbEnquetes || 0;
 
   render(`
     ${topbar("Equipe IT", "Detail collecte - Equipe " + n)}
@@ -1288,38 +1233,32 @@ function renderTeamDetailITRural(n, team, coll){
         </div>
       </div>
       <div class="stat-row" style="grid-template-columns:1fr 1fr;">
-        <div class="stat"><div class="num">${list.length}${(coll.totalAffecte!==null&&coll.totalAffecte!==undefined) ? "/"+coll.totalAffecte : ""}</div><div class="lbl">Menages enquetes</div></div>
+        <div class="stat"><div class="num">${nbEnq}${(coll.totalAffecte!==null&&coll.totalAffecte!==undefined) ? "/"+coll.totalAffecte : ""}</div><div class="lbl">Menages enquetes</div></div>
         <div class="stat"><div class="num">${locked ? "Valide" : "En attente"}</div><div class="lbl">Statut du total propose</div></div>
       </div>
       <div class="panel">
-        <label for="itTotalAffecteInput">Total affecte (propose par le chef d'equipe)</label>
+        <label for="itTotalAffecteInput">Nombre de menages denombres (total, propose par le chef d'equipe)</label>
         <input id="itTotalAffecteInput" type="number" min="0" value="${coll.totalAffecte ?? ''}">
+        <label for="itNbEnquetesInput">Nombre de menages enquetes</label>
+        <input id="itNbEnquetesInput" type="number" min="0" value="${nbEnq}">
         <div style="margin-top:12px; display:flex; gap:10px;">
-          <button class="btn ghost" onclick="updateTotalAffecteIT(${n}, document.getElementById('itTotalAffecteInput').value)">Enregistrer</button>
+          <button class="btn ghost" onclick="updateRuralCountsIT(${n})">Enregistrer</button>
           ${locked
             ? `<button class="btn ghost" onclick="unapproveTotalAffecte(${n})">Deverrouiller</button>`
             : `<button class="btn amber" onclick="approveTotalAffecte(${n})">Valider le total</button>`}
-        </div>
-      </div>
-      <div class="panel" style="padding:0;">
-        <div class="table-wrap">
-        ${list.length ? `
-        <table>
-          <thead><tr><th>Menage</th><th>Ajoute le</th><th></th></tr></thead>
-          <tbody>${rows}</tbody>
-        </table>` : `<div class="empty">Aucun menage ajoute par le chef d'equipe pour le moment.</div>`}
         </div>
       </div>
     </main>
   `);
 }
 
-async function deleteMenageRuralIT(n, idx){
-  if(!confirm("Supprimer ce menage de la liste de l'equipe " + n + " ?")) return;
+async function updateRuralCountsIT(n){
   const coll = collecteCache[n] || defaultCollecte();
-  coll.menagesRuraux.splice(idx, 1);
+  const totalVal = document.getElementById("itTotalAffecteInput").value;
+  coll.totalAffecte = totalVal === "" ? null : Math.max(0, parseInt(totalVal)||0);
+  coll.nbEnquetes = Math.max(0, parseInt(document.getElementById("itNbEnquetesInput").value)||0);
   await saveCollecte(n, coll);
-  logAction(`1 menage (rural) supprime pour l'equipe ${n}`, n);
+  logAction(`Chiffres ruraux mis a jour par l'IT pour l'equipe ${n} (denombres: ${coll.totalAffecte}, enquetes: ${coll.nbEnquetes})`, n);
   renderTeamDetailITRural(n, TEAM_BY_N[n], coll);
 }
 
@@ -1657,13 +1596,11 @@ window.deleteMenage = deleteMenage;
 window.deleteSelectedMenages = deleteSelectedMenages;
 window.toggleSelectMenage = toggleSelectMenage;
 window.toggleSelectAllMenages = toggleSelectAllMenages;
-window.saveTotalAffecteChef = saveTotalAffecteChef;
-window.addMenageRural = addMenageRural;
-window.deleteMenageRural = deleteMenageRural;
+window.updateRuralCounts = updateRuralCounts;
 window.approveTotalAffecte = approveTotalAffecte;
 window.unapproveTotalAffecte = unapproveTotalAffecte;
 window.updateTotalAffecteIT = updateTotalAffecteIT;
-window.deleteMenageRuralIT = deleteMenageRuralIT;
+window.updateRuralCountsIT = updateRuralCountsIT;
 window.setITMilieuFilter = setITMilieuFilter;
 window.setITSortMode = setITSortMode;
 window.exportDenombrementExcel = exportDenombrementExcel;
